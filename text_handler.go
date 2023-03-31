@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package slogtext implements a [slog.Handler] that is the same
+// as [slog.TextHandler] except that it formats structured values
+// as JSON instead of with `fmt.Sprintf("%+v")`, meaning that
+// most log lines look the same, but data for structured values
+// is retained in the log. See [Handler.Handle] for details.
 package slogtext
 
 import (
@@ -63,10 +68,16 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 // [HandlerOptions.ReplaceAttr].
 //
 // If a value implements [encoding.TextMarshaler], the result of MarshalText is
-// written. Otherwise, the result of fmt.Sprint is written.
+// written.
 //
-// Keys and values are quoted with [strconv.Quote] if they contain Unicode space
+// For values with a directly supported kind (all [slog.Kind] kinds except
+// KindAny), the value is formatted as with [fmt.Sprint], with keys and values
+// quoted with [strconv.Quote] if they contain Unicode space
 // characters, non-printing characters, '"' or '='.
+//
+// For other value kinds, the key is formatted as above, and the value is
+// formatted with [json.Marshal]. This is the key difference between this
+// handler and [slog.TextHandler].
 //
 // Keys inside groups consist of components (keys or group names) separated by
 // dots. No further escaping is performed.
