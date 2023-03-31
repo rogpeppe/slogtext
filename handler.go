@@ -88,22 +88,6 @@ type Handler interface {
 	WithGroup(name string) Handler
 }
 
-// Keys for "built-in" attributes.
-const (
-	// TimeKey is the key used by the built-in handlers for the time
-	// when the log method is called. The associated Value is a [time.Time].
-	TimeKey = "time"
-	// LevelKey is the key used by the built-in handlers for the level
-	// of the log call. The associated value is a [Level].
-	LevelKey = "level"
-	// MessageKey is the key used by the built-in handlers for the
-	// message of the log call. The associated value is a string.
-	MessageKey = "msg"
-	// SourceKey is the key used by the built-in handlers for the source file
-	// and line of the log call. The associated value is a string.
-	SourceKey = "source"
-)
-
 // TextHandler is a Handler that writes Records to an io.Writer as a
 // sequence of key=value pairs separated by spaces and followed by a newline.
 type TextHandler struct {
@@ -176,7 +160,7 @@ func (h *TextHandler) handle(r slog.Record) error {
 	rep := h.opts.ReplaceAttr
 	// time
 	if !r.Time.IsZero() {
-		key := TimeKey
+		key := slog.TimeKey
 		val := r.Time.Round(0) // strip monotonic to match Attr behavior
 		if rep == nil {
 			state.appendKey(key)
@@ -186,7 +170,7 @@ func (h *TextHandler) handle(r slog.Record) error {
 		}
 	}
 	// level
-	key := LevelKey
+	key := slog.LevelKey
 	val := r.Level
 	if rep == nil {
 		state.appendKey(key)
@@ -198,7 +182,7 @@ func (h *TextHandler) handle(r slog.Record) error {
 	if h.opts.AddSource {
 		frame := recordFrame(r)
 		if frame.File != "" {
-			key := SourceKey
+			key := slog.SourceKey
 			if rep == nil {
 				state.appendKey(key)
 				state.appendSource(frame.File, frame.Line)
@@ -213,7 +197,7 @@ func (h *TextHandler) handle(r slog.Record) error {
 			}
 		}
 	}
-	key = MessageKey
+	key = slog.MessageKey
 	msg := r.Message
 	if rep == nil {
 		state.appendKey(key)
