@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strconv"
 	"sync"
@@ -38,7 +39,7 @@ type Handler interface {
 	// or the method does not take a context.
 	// The context is passed so Enabled can use its values
 	// to make a decision.
-	Enabled(context.Context, Level) bool
+	Enabled(context.Context, slog.Level) bool
 
 	// Handle handles the Record.
 	// It will only be called Enabled returns true.
@@ -99,7 +100,7 @@ func newDefaultHandler(output func(int, string) error) *defaultHandler {
 	}
 }
 
-func (*defaultHandler) Enabled(_ context.Context, l Level) bool {
+func (*defaultHandler) Enabled(_ context.Context, l slog.Level) bool {
 	return l >= LevelInfo
 }
 
@@ -213,7 +214,7 @@ func (h *commonHandler) clone() *commonHandler {
 
 // enabled reports whether l is greater than or equal to the
 // minimum level.
-func (h *commonHandler) enabled(l Level) bool {
+func (h *commonHandler) enabled(l slog.Level) bool {
 	minLevel := LevelInfo
 	if h.opts.Level != nil {
 		minLevel = h.opts.Level.Level()

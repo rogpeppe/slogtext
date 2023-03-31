@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"context"
@@ -40,7 +40,7 @@ func (opts HandlerOptions) NewTextHandler(w io.Writer) *TextHandler {
 
 // Enabled reports whether the handler handles records at the given level.
 // The handler ignores records whose level is lower.
-func (h *TextHandler) Enabled(_ context.Context, level Level) bool {
+func (h *TextHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return h.commonHandler.enabled(level)
 }
 

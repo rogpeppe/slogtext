@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"bytes"
@@ -44,7 +44,7 @@ func (opts HandlerOptions) NewJSONHandler(w io.Writer) *JSONHandler {
 
 // Enabled reports whether the handler handles records at the given level.
 // The handler ignores records whose level is lower.
-func (h *JSONHandler) Enabled(_ context.Context, level Level) bool {
+func (h *JSONHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return h.commonHandler.enabled(level)
 }
 

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"context"
@@ -45,7 +45,7 @@ func SetDefault(l *Logger) {
 // It is used to link the default log.Logger to the default slog.Logger.
 type handlerWriter struct {
 	h         Handler
-	level     Level
+	level     slog.Level
 	capturePC bool
 }
 
@@ -137,7 +137,7 @@ func With(args ...any) *Logger {
 }
 
 // Enabled reports whether l emits log records at the given context and level.
-func (l *Logger) Enabled(ctx context.Context, level Level) bool {
+func (l *Logger) Enabled(ctx context.Context, level slog.Level) bool {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -147,7 +147,7 @@ func (l *Logger) Enabled(ctx context.Context, level Level) bool {
 // NewLogLogger returns a new log.Logger such that each call to its Output method
 // dispatches a Record to the specified handler. The logger acts as a bridge from
 // the older log API to newer structured logging handlers.
-func NewLogLogger(h Handler, level Level) *log.Logger {
+func NewLogLogger(h Handler, level slog.Level) *log.Logger {
 	return log.New(&handlerWriter{h, level, true}, "", 0)
 }
 
@@ -161,12 +161,12 @@ func NewLogLogger(h Handler, level Level) *log.Logger {
 //     the following argument is treated as the value and the two are combined
 //     into an Attr.
 //   - Otherwise, the argument is treated as a value with key "!BADKEY".
-func (l *Logger) Log(ctx context.Context, level Level, msg string, args ...any) {
+func (l *Logger) Log(ctx context.Context, level slog.Level, msg string, args ...any) {
 	l.log(ctx, level, msg, args...)
 }
 
 // LogAttrs is a more efficient version of [Logger.Log] that accepts only Attrs.
-func (l *Logger) LogAttrs(ctx context.Context, level Level, msg string, attrs ...Attr) {
+func (l *Logger) LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...Attr) {
 	l.logAttrs(ctx, level, msg, attrs...)
 }
 
@@ -213,7 +213,7 @@ func (l *Logger) ErrorCtx(ctx context.Context, msg string, args ...any) {
 // log is the low-level logging method for methods that take ...any.
 // It must always be called directly by an exported logging method
 // or function, because it uses a fixed call depth to obtain the pc.
-func (l *Logger) log(ctx context.Context, level Level, msg string, args ...any) {
+func (l *Logger) log(ctx context.Context, level slog.Level, msg string, args ...any) {
 	if !l.Enabled(ctx, level) {
 		return
 	}
@@ -233,7 +233,7 @@ func (l *Logger) log(ctx context.Context, level Level, msg string, args ...any) 
 }
 
 // logAttrs is like [Logger.log], but for methods that take ...Attr.
-func (l *Logger) logAttrs(ctx context.Context, level Level, msg string, attrs ...Attr) {
+func (l *Logger) logAttrs(ctx context.Context, level slog.Level, msg string, attrs ...Attr) {
 	if !l.Enabled(ctx, level) {
 		return
 	}
@@ -293,11 +293,11 @@ func ErrorCtx(ctx context.Context, msg string, args ...any) {
 }
 
 // Log calls Logger.Log on the default logger.
-func Log(ctx context.Context, level Level, msg string, args ...any) {
+func Log(ctx context.Context, level slog.Level, msg string, args ...any) {
 	Default().log(ctx, level, msg, args...)
 }
 
 // LogAttrs calls Logger.LogAttrs on the default logger.
-func LogAttrs(ctx context.Context, level Level, msg string, attrs ...Attr) {
+func LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...Attr) {
 	Default().logAttrs(ctx, level, msg, attrs...)
 }
