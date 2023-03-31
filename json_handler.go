@@ -8,21 +8,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"unicode/utf8"
-
-	"github.com/rogpeppe/slogtext/internal/buffer"
 )
 
-func appendJSONMarshal(buf *buffer.Buffer, v any) error {
+func appendJSONMarshal(v any, dst []byte) ([]byte, error) {
 	// Use a json.Encoder to avoid escaping HTML.
 	var bb bytes.Buffer
 	enc := json.NewEncoder(&bb)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
-		return err
+		return nil, err
 	}
 	bs := bb.Bytes()
-	buf.Write(bs[:len(bs)-1]) // remove final newline
-	return nil
+	dst = append(dst, bs[:len(bs)-1]...) // remove final newline
+	return dst, nil
 }
 
 // appendEscapedJSONString escapes s for JSON and appends it to buf.
