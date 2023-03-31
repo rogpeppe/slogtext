@@ -7,74 +7,10 @@ package slogtext
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"log/slog"
-	"math"
-	"strconv"
-	"time"
 	"unicode/utf8"
 
 	"github.com/rogpeppe/slogtext/internal/buffer"
 )
-
-// Adapted from time.Time.MarshalJSON to avoid allocation.
-func appendJSONTime(s *handleState, t time.Time) {
-	if y := t.Year(); y < 0 || y >= 10000 {
-		// RFC 3339 is clear that years are 4 digits exactly.
-		// See golang.org/issue/4556#c15 for more discussion.
-		s.appendError(errors.New("time.Time year outside of range [0,9999]"))
-	}
-	s.buf.WriteByte('"')
-	*s.buf = t.AppendFormat(*s.buf, time.RFC3339Nano)
-	s.buf.WriteByte('"')
-}
-
-func appendJSONValue(s *handleState, v slog.Value) error {
-	switch v.Kind() {
-	case slog.KindString:
-		s.appendString(v.String())
-	case slog.KindInt64:
-		*s.buf = strconv.AppendInt(*s.buf, v.Int64(), 10)
-	case slog.KindUint64:
-		*s.buf = strconv.AppendUint(*s.buf, v.Uint64(), 10)
-	case slog.KindFloat64:
-		f := v.Float64()
-		// json.Marshal fails on special floats, so handle them here.
-		switch {
-		case math.IsInf(f, 1):
-			s.buf.WriteString(`"Infinity"`)
-		case math.IsInf(f, -1):
-			s.buf.WriteString(`"-Infinity"`)
-		case math.IsNaN(f):
-			s.buf.WriteString(`"NaN"`)
-		default:
-			// json.Marshal is funny about floats; it doesn't
-			// always match strconv.AppendFloat. So just call it.
-			// That's expensive, but floats are rare.
-			if err := appendJSONMarshal(s.buf, f); err != nil {
-				return err
-			}
-		}
-	case slog.KindBool:
-		*s.buf = strconv.AppendBool(*s.buf, v.Bool())
-	case slog.KindDuration:
-		// Do what json.Marshal does.
-		*s.buf = strconv.AppendInt(*s.buf, int64(v.Duration()), 10)
-	case slog.KindTime:
-		s.appendTime(v.Time())
-	case slog.KindAny:
-		a := v.Any()
-		if err, ok := a.(error); ok {
-			s.appendString(err.Error())
-		} else {
-			return appendJSONMarshal(s.buf, a)
-		}
-	default:
-		panic(fmt.Sprintf("bad kind: %d", v.Kind()))
-	}
-	return nil
-}
 
 func appendJSONMarshal(buf *buffer.Buffer, v any) error {
 	// Use a json.Encoder to avoid escaping HTML.
