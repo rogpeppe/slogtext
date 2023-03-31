@@ -153,7 +153,9 @@ func recordFrame(r slog.Record) runtime.Frame {
 func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	// preformatted Attrs
 	if len(s.h.preformattedAttrs) > 0 {
-		s.buf.WriteString(" ")
+		if len(*s.buf) > 0 {
+			s.buf.WriteString(" ")
+		}
 		s.buf.Write(s.h.preformattedAttrs)
 	}
 	// Attrs in Record -- unlike the built-in ones, they are in groups started
@@ -284,7 +286,9 @@ func (s *handleState) appendError(err error) {
 }
 
 func (s *handleState) appendKey(key string) {
-	s.buf.WriteString(" ")
+	if len(*s.buf) > 0 {
+		s.buf.WriteString(" ")
+	}
 	if s.prefix != nil {
 		// TODO: optimize by avoiding allocation.
 		s.appendString(string(*s.prefix) + key)

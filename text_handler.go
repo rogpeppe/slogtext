@@ -89,8 +89,9 @@ func appendTextValue(s *handleState, v slog.Value) error {
 		s.appendString(v.String())
 	case slog.KindTime:
 		s.appendTime(v.Time())
-	case slog.KindAny:
-		if tm, ok := v.Any().(encoding.TextMarshaler); ok {
+	case slog.KindAny, slog.KindLogValuer:
+		x := v.Any()
+		if tm, ok := x.(encoding.TextMarshaler); ok {
 			data, err := tm.MarshalText()
 			if err != nil {
 				return err
@@ -99,25 +100,37 @@ func appendTextValue(s *handleState, v slog.Value) error {
 			s.appendString(string(data))
 			return nil
 		}
-		if bs, ok := byteSlice(v.Any()); ok {
+		if bs, ok := byteSlice(x); ok {
 			// As of Go 1.19, this only allocates for strings longer than 32 bytes.
 			s.buf.WriteString(strconv.Quote(string(bs)))
 			return nil
 		}
-		s.appendString(fmt.Sprintf("%+v", v.Any()))
-	default:
-		data, err := appendValue(v, *s.buf)
+		data, err := appendJSONMarshal(x, *s.buf)
 		if err != nil {
 			return err
 		}
 		*s.buf = data
+	case slog.KindInt64:
+		*s.buf = strconv.AppendInt(*s.buf, v.Int64(), 10)
+	case slog.KindUint64:
+		*s.buf = strconv.AppendUint(*s.buf, v.Uint64(), 10)
+	case slog.KindFloat64:
+		*s.buf = strconv.AppendFloat(*s.buf, v.Float64(), 'g', -1, 64)
+	case slog.KindBool:
+		*s.buf = strconv.AppendBool(*s.buf, v.Bool())
+	case slog.KindDuration:
+		*s.buf = append(*s.buf, v.Duration().String()...)
+	case slog.KindGroup:
+		*s.buf = fmt.Append(*s.buf, v.Group())
+	default:
+		panic(fmt.Sprintf("bad kind: %s", v.Kind()))
 	}
 	return nil
 }
 
 // append appends a text representation of v to dst.
 // v is formatted as with fmt.Sprint.
-func appendValue(v slog.Value, dst []byte) ([]byte, error) {
+func appendValue1(v slog.Value, dst []byte) ([]byte, error) {
 	switch v.Kind() {
 	case slog.KindString:
 		return append(dst, v.String()...), nil

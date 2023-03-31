@@ -10,6 +10,8 @@ import (
 	"unicode/utf8"
 )
 
+var nullBytes = []byte("null\n")
+
 func appendJSONMarshal(v any, dst []byte) ([]byte, error) {
 	// Use a json.Encoder to avoid escaping HTML.
 	var bb bytes.Buffer
@@ -19,8 +21,10 @@ func appendJSONMarshal(v any, dst []byte) ([]byte, error) {
 		return nil, err
 	}
 	bs := bb.Bytes()
-	dst = append(dst, bs[:len(bs)-1]...) // remove final newline
-	return dst, nil
+	if bytes.Equal(bs, nullBytes) {
+		return append(dst, "<nil>"...), nil
+	}
+	return append(dst, bs[:len(bs)-1]...), nil // remove final newline
 }
 
 // appendEscapedJSONString escapes s for JSON and appends it to buf.

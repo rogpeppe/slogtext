@@ -38,12 +38,12 @@ func TestTextHandler(t *testing.T) {
 		{
 			"String method",
 			slog.Any("name", name{"Ren", "Hoek"}),
-			`name`, `"Hoek, Ren"`,
+			`name`, `{"First":"Ren","Last":"Hoek"}`,
 		},
 		{
 			"struct",
 			slog.Any("x", &struct{ A, b int }{A: 1, b: 2}),
-			`x`, `"&{A:1 b:2}"`,
+			`x`, `{"A":1}`,
 		},
 		{
 			"TextMarshaler",
@@ -83,7 +83,7 @@ func TestTextHandler(t *testing.T) {
 			} {
 				t.Run(opts.name, func(t *testing.T) {
 					var buf bytes.Buffer
-					h := opts.opts.NewTextHandler(&buf)
+					h := NewHandlerWithOptions(&buf, opts.opts)
 					r := slog.NewRecord(testTime, slog.LevelInfo, "a message", 0)
 					r.AddAttrs(test.attr)
 					if err := h.Handle(context.Background(), r); err != nil {
@@ -94,7 +94,7 @@ func TestTextHandler(t *testing.T) {
 					got = got[:len(got)-1]
 					want := opts.wantPrefix + " " + opts.modKey(test.wantKey) + "=" + test.wantVal
 					if got != want {
-						t.Errorf("\ngot  %s\nwant %s", got, want)
+						t.Errorf("\ngot  %q\nwant %q", got, want)
 					}
 				})
 			}
@@ -125,7 +125,7 @@ func (t text) MarshalText() ([]byte, error) {
 
 func TestTextHandlerSource(t *testing.T) {
 	var buf bytes.Buffer
-	h := slog.HandlerOptions{AddSource: true}.NewTextHandler(&buf)
+	h := NewHandlerWithOptions(&buf, slog.HandlerOptions{AddSource: true})
 	r := slog.NewRecord(testTime, slog.LevelInfo, "m", callerPC(2))
 	if err := h.Handle(context.Background(), r); err != nil {
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func TestSourceRegexp(t *testing.T) {
 
 func TestTextHandlerPreformatted(t *testing.T) {
 	var buf bytes.Buffer
-	var h slog.Handler = slog.NewTextHandler(&buf)
+	var h slog.Handler = NewHandler(&buf)
 	h = h.WithAttrs([]slog.Attr{slog.Duration("dur", time.Minute), slog.Bool("b", true)})
 	// Also test omitting time.
 	r := slog.NewRecord(time.Time{}, 0 /* 0 Level is INFO */, "m", 0)
@@ -171,7 +171,7 @@ func TestTextHandlerAlloc(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		r.AddAttrs(slog.Int("x = y", i))
 	}
-	var h slog.Handler = slog.NewTextHandler(io.Discard)
+	var h slog.Handler = NewHandler(io.Discard)
 	wantAllocs(t, 0, func() { h.Handle(context.Background(), r) })
 
 	h = h.WithGroup("s")
