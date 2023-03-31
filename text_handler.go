@@ -128,33 +128,6 @@ func appendTextValue(s *handleState, v slog.Value) error {
 	return nil
 }
 
-// append appends a text representation of v to dst.
-// v is formatted as with fmt.Sprint.
-func appendValue1(v slog.Value, dst []byte) ([]byte, error) {
-	switch v.Kind() {
-	case slog.KindString:
-		return append(dst, v.String()...), nil
-	case slog.KindInt64:
-		return strconv.AppendInt(dst, v.Int64(), 10), nil
-	case slog.KindUint64:
-		return strconv.AppendUint(dst, v.Uint64(), 10), nil
-	case slog.KindFloat64:
-		return strconv.AppendFloat(dst, v.Float64(), 'g', -1, 64), nil
-	case slog.KindBool:
-		return strconv.AppendBool(dst, v.Bool()), nil
-	case slog.KindDuration:
-		return append(dst, v.Duration().String()...), nil
-	case slog.KindTime:
-		return append(dst, v.Time().String()...), nil
-	case slog.KindGroup:
-		return fmt.Append(dst, v.Group()), nil
-	case slog.KindAny, slog.KindLogValuer:
-		return appendJSONMarshal(v.Any(), dst)
-	default:
-		panic(fmt.Sprintf("bad kind: %s", v.Kind()))
-	}
-}
-
 // byteSlice returns its argument as a []byte if the argument's
 // underlying type is []byte, along with a second return value of true.
 // Otherwise it returns nil, false.
