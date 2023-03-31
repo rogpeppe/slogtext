@@ -2,61 +2,60 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package buffer provides a pool-allocated byte buffer.
-package buffer
+package slogtext
 
 import "sync"
 
 // buffer adapted from go/src/fmt/print.go
-type Buffer []byte
+type buffer []byte
 
 // Having an initial size gives a dramatic speedup.
 var bufPool = sync.Pool{
 	New: func() any {
 		b := make([]byte, 0, 1024)
-		return (*Buffer)(&b)
+		return (*buffer)(&b)
 	},
 }
 
-func New() *Buffer {
-	return bufPool.Get().(*Buffer)
+func newBuffer() *buffer {
+	return bufPool.Get().(*buffer)
 }
 
-func (b *Buffer) Free() {
+func (b *buffer) Free() {
 	// To reduce peak allocation, return only smaller buffers to the pool.
-	const maxBufferSize = 16 << 10
-	if cap(*b) <= maxBufferSize {
+	const maxbufferSize = 16 << 10
+	if cap(*b) <= maxbufferSize {
 		*b = (*b)[:0]
 		bufPool.Put(b)
 	}
 }
 
-func (b *Buffer) Reset() {
+func (b *buffer) Reset() {
 	*b = (*b)[:0]
 }
 
-func (b *Buffer) Write(p []byte) (int, error) {
+func (b *buffer) Write(p []byte) (int, error) {
 	*b = append(*b, p...)
 	return len(p), nil
 }
 
-func (b *Buffer) WriteString(s string) (int, error) {
+func (b *buffer) WriteString(s string) (int, error) {
 	*b = append(*b, s...)
 	return len(s), nil
 }
 
-func (b *Buffer) WriteByte(c byte) error {
+func (b *buffer) WriteByte(c byte) error {
 	*b = append(*b, c)
 	return nil
 }
 
-func (b *Buffer) WritePosInt(i int) {
+func (b *buffer) WritePosInt(i int) {
 	b.WritePosIntWidth(i, 0)
 }
 
 // WritePosIntWidth writes non-negative integer i to the buffer, padded on the left
 // by zeroes to the given width. Use a width of 0 to omit padding.
-func (b *Buffer) WritePosIntWidth(i, width int) {
+func (b *buffer) WritePosIntWidth(i, width int) {
 	// Cheap integer to fixed-width decimal ASCII.
 	// Copied from log/log.go.
 
@@ -79,6 +78,6 @@ func (b *Buffer) WritePosIntWidth(i, width int) {
 	b.Write(bb[bp:])
 }
 
-func (b *Buffer) String() string {
+func (b *buffer) String() string {
 	return string(*b)
 }

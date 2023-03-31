@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/rogpeppe/slogtext/internal/buffer"
 )
 
 // TextHandler is a Handler that writes Records to an io.Writer as a
@@ -54,10 +52,10 @@ func (h *TextHandler) enabled(l slog.Level) bool {
 func (h *TextHandler) withAttrs(as []slog.Attr) *TextHandler {
 	h2 := h.clone()
 	// Pre-format the attributes as an optimization.
-	prefix := buffer.New()
+	prefix := newBuffer()
 	defer prefix.Free()
 	prefix.WriteString(h.groupPrefix)
-	state := h2.newHandleState((*buffer.Buffer)(&h2.preformattedAttrs), false, "", prefix)
+	state := h2.newHandleState((*buffer)(&h2.preformattedAttrs), false, "", prefix)
 	defer state.free()
 	state.openGroups()
 	for _, a := range as {
@@ -81,7 +79,7 @@ func (h *TextHandler) withGroup(name string) *TextHandler {
 }
 
 func (h *TextHandler) handle(r slog.Record) error {
-	state := h.newHandleState(buffer.New(), true, "", nil)
+	state := h.newHandleState(newBuffer(), true, "", nil)
 	defer state.free()
 	// Built-in attributes. They are not in a group.
 	stateGroups := state.groups
@@ -116,7 +114,7 @@ func (h *TextHandler) handle(r slog.Record) error {
 				state.appendKey(key)
 				state.appendSource(frame.File, frame.Line)
 			} else {
-				buf := buffer.New()
+				buf := newBuffer()
 				buf.WriteString(frame.File) // TODO: escape?
 				buf.WriteByte(':')
 				buf.WritePosInt(frame.Line)
@@ -160,7 +158,7 @@ func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	}
 	// Attrs in Record -- unlike the built-in ones, they are in groups started
 	// from WithGroup.
-	s.prefix = buffer.New()
+	s.prefix = newBuffer()
 	defer s.prefix.Free()
 	s.prefix.WriteString(s.h.groupPrefix)
 	s.openGroups()
@@ -174,10 +172,10 @@ func (s *handleState) appendNonBuiltIns(r slog.Record) {
 // before the next key, after which it stays true.
 type handleState struct {
 	h       *TextHandler
-	buf     *buffer.Buffer
-	freeBuf bool           // should buf be freed?
-	prefix  *buffer.Buffer // for text: key prefix
-	groups  *[]string      // pool-allocated slice of active groups, for ReplaceAttr
+	buf     *buffer
+	freeBuf bool      // should buf be freed?
+	prefix  *buffer   // for text: key prefix
+	groups  *[]string // pool-allocated slice of active groups, for ReplaceAttr
 }
 
 var groupPool = sync.Pool{New: func() any {
@@ -185,7 +183,7 @@ var groupPool = sync.Pool{New: func() any {
 	return &s
 }}
 
-func (h *TextHandler) newHandleState(buf *buffer.Buffer, freeBuf bool, sep string, prefix *buffer.Buffer) handleState {
+func (h *TextHandler) newHandleState(buf *buffer, freeBuf bool, sep string, prefix *buffer) handleState {
 	s := handleState{
 		h:       h,
 		buf:     buf,
@@ -328,7 +326,7 @@ func (s *handleState) appendTime(t time.Time) {
 }
 
 // This takes half the time of Time.AppendFormat.
-func writeTimeRFC3339Millis(buf *buffer.Buffer, t time.Time) {
+func writeTimeRFC3339Millis(buf *buffer, t time.Time) {
 	year, month, day := t.Date()
 	buf.WritePosIntWidth(year, 4)
 	buf.WriteByte('-')
