@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"golang.org/x/exp/slices"
 	"github.com/rogpeppe/slogtext"
+	"golang.org/x/exp/slices"
 )
 
 func TestHandlers(t *testing.T) {

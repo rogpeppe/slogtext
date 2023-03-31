@@ -143,7 +143,7 @@ func (h wrappingHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 func (h wrappingHandler) WithGroup(name string) Handler { return h.h.WithGroup(name) }
 func (h wrappingHandler) WithAttrs(as []Attr) Handler   { return h.h.WithAttrs(as) }
-func (h wrappingHandler) Handle(r Record) error         { return h.h.Handle(r) }
+func (h wrappingHandler) Handle(r slog.Record) error    { return h.h.Handle(r) }
 
 func TestAttrs(t *testing.T) {
 	check := func(got []Attr, want ...Attr) {
@@ -161,7 +161,7 @@ func TestAttrs(t *testing.T) {
 	check(attrsSlice(h.r), Int("c", 3))
 }
 
-func sourceLine(r Record) (string, int) {
+func sourceLine(r slog.Record) (string, int) {
 	f := r.frame()
 	return f.File, f.Line
 }
@@ -439,12 +439,12 @@ func clean(s string) string {
 }
 
 type captureHandler struct {
-	r      Record
+	r      slog.Record
 	attrs  []Attr
 	groups []string
 }
 
-func (h *captureHandler) Handle(r Record) error {
+func (h *captureHandler) Handle(r slog.Record) error {
 	h.r = r
 	return nil
 }
@@ -469,7 +469,7 @@ type discardHandler struct {
 }
 
 func (d discardHandler) Enabled(context.Context, slog.Level) bool { return !d.disabled }
-func (discardHandler) Handle(Record) error                        { return nil }
+func (discardHandler) Handle(slog.Record) error                   { return nil }
 func (d discardHandler) WithAttrs(as []Attr) Handler {
 	d.attrs = concat(d.attrs, as)
 	return d

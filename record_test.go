@@ -64,7 +64,7 @@ func TestAliasingAndClone(t *testing.T) {
 		return as
 	}
 
-	check := func(r Record, want []Attr) {
+	check := func(r slog.Record, want []Attr) {
 		t.Helper()
 		got := attrsSlice(r)
 		if !attrsEqual(got, want) {
@@ -96,13 +96,13 @@ func TestAliasingAndClone(t *testing.T) {
 	check(r2, append(slices.Clip(r1Attrs), Int("p", 2)))
 }
 
-func newRecordWithAttrs(as []Attr) Record {
+func newRecordWithAttrs(as []Attr) slog.Record {
 	r := NewRecord(time.Now(), slog.LevelInfo, "", 0, nil)
 	r.AddAttrs(as...)
 	return r
 }
 
-func attrsSlice(r Record) []Attr {
+func attrsSlice(r slog.Record) []Attr {
 	s := make([]Attr, 0, r.NumAttrs())
 	r.Attrs(func(a Attr) { s = append(s, a) })
 	return s

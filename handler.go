@@ -45,7 +45,7 @@ type Handler interface {
 	//   - If a group's key is empty, inline the group's Attrs.
 	//   - If a group has no Attrs (even if it has a non-empty key),
 	//     ignore it.
-	Handle(r Record) error
+	Handle(r slog.Record) error
 
 	// WithAttrs returns a new Handler whose attributes consist of
 	// both the receiver's attributes and the arguments.
@@ -94,7 +94,7 @@ func (*defaultHandler) Enabled(_ context.Context, l slog.Level) bool {
 // Collect the level, attributes and message in a string and
 // write it with the default log.Logger.
 // Let the log.Logger handle time and file/line.
-func (h *defaultHandler) Handle(r Record) error {
+func (h *defaultHandler) Handle(r slog.Record) error {
 	buf := buffer.New()
 	buf.WriteString(r.Level.String())
 	buf.WriteByte(' ')
@@ -243,7 +243,7 @@ func (h *commonHandler) withGroup(name string) *commonHandler {
 	return h2
 }
 
-func (h *commonHandler) handle(r Record) error {
+func (h *commonHandler) handle(r slog.Record) error {
 	state := h.newHandleState(buffer.New(), true, "", nil)
 	defer state.free()
 	// Built-in attributes. They are not in a group.
@@ -307,7 +307,7 @@ func (h *commonHandler) handle(r Record) error {
 	return err
 }
 
-func (s *handleState) appendNonBuiltIns(r Record) {
+func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	// preformatted Attrs
 	if len(s.h.preformattedAttrs) > 0 {
 		s.buf.WriteString(s.sep)

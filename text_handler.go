@@ -87,7 +87,7 @@ func (h *TextHandler) WithGroup(name string) Handler {
 //
 // Each call to Handle results in a single serialized call to
 // io.Writer.Write.
-func (h *TextHandler) Handle(r Record) error {
+func (h *TextHandler) Handle(r slog.Record) error {
 	return h.commonHandler.handle(r)
 }
 
