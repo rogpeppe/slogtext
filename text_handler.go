@@ -35,11 +35,11 @@ func (h *TextHandler) Enabled(_ context.Context, level slog.Level) bool {
 
 // WithAttrs returns a new TextHandler whose attributes consists
 // of h's attributes followed by attrs.
-func (h *TextHandler) WithAttrs(attrs []slog.Attr) Handler {
+func (h *TextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return h.withAttrs(attrs)
 }
 
-func (h *TextHandler) WithGroup(name string) Handler {
+func (h *TextHandler) WithGroup(name string) slog.Handler {
 	return h.withGroup(name)
 }
 
