@@ -6,20 +6,6 @@ package slogtext
 
 import "log/slog"
 
-const nAttrsInline = 5
-
-// countAttrs returns the number of Attrs that would be created from args.
-func countAttrs(args []any) int {
-	n := 0
-	for i := 0; i < len(args); i++ {
-		n++
-		if _, ok := args[i].(string); ok {
-			i++
-		}
-	}
-	return n
-}
-
 const badKey = "!BADKEY"
 
 // argsToAttr turns a prefix of the nonempty args slice into an Attr
