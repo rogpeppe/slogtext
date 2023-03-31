@@ -14,7 +14,7 @@ import (
 	"encoding"
 	"fmt"
 	"io"
-	"log/slog"
+	"golang.org/x/exp/slog"
 	"reflect"
 	"strconv"
 	"unicode"

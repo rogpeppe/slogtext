@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log/slog"
+	"golang.org/x/exp/slog"
 	"strings"
 	"testing"
 )

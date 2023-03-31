@@ -7,7 +7,7 @@ package slogtext
 import (
 	"fmt"
 	"io"
-	"log/slog"
+	"golang.org/x/exp/slog"
 	"runtime"
 	"slices"
 	"strconv"

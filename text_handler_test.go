@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
+	"golang.org/x/exp/slog"
 	"regexp"
 	"strings"
 	"testing"
