@@ -16,43 +16,31 @@ import (
 	"unicode/utf8"
 )
 
-// TextHandler is a Handler that writes Records to an io.Writer as a
-// sequence of key=value pairs separated by spaces and followed by a newline.
-type TextHandler struct {
-	*commonHandler
-}
-
-// NewTextHandler creates a TextHandler that writes to w,
-// using the default options.
-func NewTextHandler(w io.Writer) *TextHandler {
-	return (HandlerOptions{}).NewTextHandler(w)
-}
-
-// NewTextHandler creates a TextHandler with the given options that writes to w.
-func (opts HandlerOptions) NewTextHandler(w io.Writer) *TextHandler {
+func NewHandlerWithOptions(w io.Writer, opts slog.HandlerOptions) *TextHandler {
 	return &TextHandler{
-		&commonHandler{
-			json: false,
-			w:    w,
-			opts: opts,
-		},
+		w:    w,
+		opts: opts,
 	}
+}
+
+func NewHandler(w io.Writer) *TextHandler {
+	return NewHandlerWithOptions(w, slog.HandlerOptions{})
 }
 
 // Enabled reports whether the handler handles records at the given level.
 // The handler ignores records whose level is lower.
 func (h *TextHandler) Enabled(_ context.Context, level slog.Level) bool {
-	return h.commonHandler.enabled(level)
+	return h.enabled(level)
 }
 
 // WithAttrs returns a new TextHandler whose attributes consists
 // of h's attributes followed by attrs.
 func (h *TextHandler) WithAttrs(attrs []slog.Attr) Handler {
-	return &TextHandler{commonHandler: h.commonHandler.withAttrs(attrs)}
+	return h.withAttrs(attrs)
 }
 
 func (h *TextHandler) WithGroup(name string) Handler {
-	return &TextHandler{commonHandler: h.commonHandler.withGroup(name)}
+	return h.withGroup(name)
 }
 
 // Handle formats its argument Record as a single line of space-separated
@@ -92,7 +80,7 @@ func (h *TextHandler) WithGroup(name string) Handler {
 // Each call to Handle results in a single serialized call to
 // io.Writer.Write.
 func (h *TextHandler) Handle(_ context.Context, r slog.Record) error {
-	return h.commonHandler.handle(r)
+	return h.handle(r)
 }
 
 func appendTextValue(s *handleState, v slog.Value) error {

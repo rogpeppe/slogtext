@@ -6,11 +6,9 @@ package slogtext
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	"strconv"
@@ -19,76 +17,6 @@ import (
 
 	"github.com/rogpeppe/slogtext/internal/buffer"
 )
-
-// JSONHandler is a Handler that writes Records to an io.Writer as
-// line-delimited JSON objects.
-type JSONHandler struct {
-	*commonHandler
-}
-
-// NewJSONHandler creates a JSONHandler that writes to w,
-// using the default options.
-func NewJSONHandler(w io.Writer) *JSONHandler {
-	return (HandlerOptions{}).NewJSONHandler(w)
-}
-
-// NewJSONHandler creates a JSONHandler with the given options that writes to w.
-func (opts HandlerOptions) NewJSONHandler(w io.Writer) *JSONHandler {
-	return &JSONHandler{
-		&commonHandler{
-			json: true,
-			w:    w,
-			opts: opts,
-		},
-	}
-}
-
-// Enabled reports whether the handler handles records at the given level.
-// The handler ignores records whose level is lower.
-func (h *JSONHandler) Enabled(_ context.Context, level slog.Level) bool {
-	return h.commonHandler.enabled(level)
-}
-
-// WithAttrs returns a new JSONHandler whose attributes consists
-// of h's attributes followed by attrs.
-func (h *JSONHandler) WithAttrs(attrs []slog.Attr) Handler {
-	return &JSONHandler{commonHandler: h.commonHandler.withAttrs(attrs)}
-}
-
-func (h *JSONHandler) WithGroup(name string) Handler {
-	return &JSONHandler{commonHandler: h.commonHandler.withGroup(name)}
-}
-
-// Handle formats its argument Record as a JSON object on a single line.
-//
-// If the Record's time is zero, the time is omitted.
-// Otherwise, the key is "time"
-// and the value is output as with json.Marshal.
-//
-// If the Record's level is zero, the level is omitted.
-// Otherwise, the key is "level"
-// and the value of [Level.String] is output.
-//
-// If the AddSource option is set and source information is available,
-// the key is "source"
-// and the value is output as "FILE:LINE".
-//
-// The message's key is "msg".
-//
-// To modify these or other attributes, or remove them from the output, use
-// [HandlerOptions.ReplaceAttr].
-//
-// Values are formatted as with encoding/json.Marshal, with the following
-// exceptions:
-//   - Floating-point NaNs and infinities are formatted as one of the strings
-//     "NaN", "Infinity" or "-Infinity".
-//   - Levels are formatted as with Level.String.
-//   - HTML characters are not escaped.
-//
-// Each call to Handle results in a single serialized call to io.Writer.Write.
-func (h *JSONHandler) Handle(_ context.Context, r slog.Record) error {
-	return h.commonHandler.handle(r)
-}
 
 // Adapted from time.Time.MarshalJSON to avoid allocation.
 func appendJSONTime(s *handleState, t time.Time) {

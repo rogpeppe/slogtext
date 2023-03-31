@@ -9,38 +9,10 @@ import (
 	"log"
 	"log/slog"
 	"runtime"
-	"sync/atomic"
 	"time"
 
 	"github.com/rogpeppe/slogtext/internal"
 )
-
-var defaultLogger atomic.Value
-
-func init() {
-	defaultLogger.Store(New(newDefaultHandler(log.Output)))
-}
-
-// Default returns the default Logger.
-func Default() *Logger { return defaultLogger.Load().(*Logger) }
-
-// SetDefault makes l the default Logger.
-// After this call, output from the log package's default Logger
-// (as with [log.Print], etc.) will be logged at LevelInfo using l's Handler.
-func SetDefault(l *Logger) {
-	defaultLogger.Store(l)
-	// If the default's handler is a defaultHandler, then don't use a handleWriter,
-	// or we'll deadlock as they both try to acquire the log default mutex.
-	// The defaultHandler will use whatever the log default writer is currently
-	// set to, which is correct.
-	// This can occur with SetDefault(Default()).
-	// See TestSetDefault.
-	if _, ok := l.Handler().(*defaultHandler); !ok {
-		capturePC := log.Flags()&(log.Lshortfile|log.Llongfile) != 0
-		log.SetOutput(&handlerWriter{l.Handler(), slog.LevelInfo, capturePC})
-		log.SetFlags(0) // we want just the log message, no time or location
-	}
-}
 
 // handlerWriter is an io.Writer that calls a Handler.
 // It is used to link the default log.Logger to the default slog.Logger.
@@ -130,11 +102,6 @@ func New(h Handler) *Logger {
 		panic("nil Handler")
 	}
 	return &Logger{handler: h}
-}
-
-// With calls Logger.With on the default logger.
-func With(args ...any) *Logger {
-	return Default().With(args...)
 }
 
 // Enabled reports whether l emits log records at the given context and level.
@@ -251,54 +218,4 @@ func (l *Logger) logAttrs(ctx context.Context, level slog.Level, msg string, att
 		ctx = context.Background()
 	}
 	_ = l.Handler().Handle(ctx, r)
-}
-
-// Debug calls Logger.Debug on the default logger.
-func Debug(msg string, args ...any) {
-	Default().log(nil, slog.LevelDebug, msg, args...)
-}
-
-// DebugCtx calls Logger.DebugCtx on the default logger.
-func DebugCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, slog.LevelDebug, msg, args...)
-}
-
-// Info calls Logger.Info on the default logger.
-func Info(msg string, args ...any) {
-	Default().log(nil, slog.LevelInfo, msg, args...)
-}
-
-// InfoCtx calls Logger.InfoCtx on the default logger.
-func InfoCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, slog.LevelInfo, msg, args...)
-}
-
-// Warn calls Logger.Warn on the default logger.
-func Warn(msg string, args ...any) {
-	Default().log(nil, slog.LevelWarn, msg, args...)
-}
-
-// WarnCtx calls Logger.WarnCtx on the default logger.
-func WarnCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, slog.LevelWarn, msg, args...)
-}
-
-// Error calls Logger.Error on the default logger.
-func Error(msg string, args ...any) {
-	Default().log(nil, slog.LevelError, msg, args...)
-}
-
-// ErrorCtx calls Logger.ErrorCtx on the default logger.
-func ErrorCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, slog.LevelError, msg, args...)
-}
-
-// Log calls Logger.Log on the default logger.
-func Log(ctx context.Context, level slog.Level, msg string, args ...any) {
-	Default().log(ctx, level, msg, args...)
-}
-
-// LogAttrs calls Logger.LogAttrs on the default logger.
-func LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
-	Default().logAttrs(ctx, level, msg, attrs...)
 }

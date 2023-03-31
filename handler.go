@@ -88,91 +88,6 @@ type Handler interface {
 	WithGroup(name string) Handler
 }
 
-type defaultHandler struct {
-	ch *commonHandler
-	// log.Output, except for testing
-	output func(calldepth int, message string) error
-}
-
-func newDefaultHandler(output func(int, string) error) *defaultHandler {
-	return &defaultHandler{
-		ch:     &commonHandler{json: false},
-		output: output,
-	}
-}
-
-func (*defaultHandler) Enabled(_ context.Context, l slog.Level) bool {
-	return l >= slog.LevelInfo
-}
-
-// Collect the level, attributes and message in a string and
-// write it with the default log.Logger.
-// Let the log.Logger handle time and file/line.
-func (h *defaultHandler) Handle(ctx context.Context, r slog.Record) error {
-	buf := buffer.New()
-	buf.WriteString(r.Level.String())
-	buf.WriteByte(' ')
-	buf.WriteString(r.Message)
-	state := h.ch.newHandleState(buf, true, " ", nil)
-	defer state.free()
-	state.appendNonBuiltIns(r)
-
-	// skip [h.output, defaultHandler.Handle, handlerWriter.Write, log.Output]
-	return h.output(4, buf.String())
-}
-
-func (h *defaultHandler) WithAttrs(as []slog.Attr) Handler {
-	return &defaultHandler{h.ch.withAttrs(as), h.output}
-}
-
-func (h *defaultHandler) WithGroup(name string) Handler {
-	return &defaultHandler{h.ch.withGroup(name), h.output}
-}
-
-// HandlerOptions are options for a TextHandler or JSONHandler.
-// A zero HandlerOptions consists entirely of default values.
-type HandlerOptions struct {
-	// When AddSource is true, the handler adds a ("source", "file:line")
-	// attribute to the output indicating the source code position of the log
-	// statement. AddSource is false by default to skip the cost of computing
-	// this information.
-	AddSource bool
-
-	// Level reports the minimum record level that will be logged.
-	// The handler discards records with lower levels.
-	// If Level is nil, the handler assumes LevelInfo.
-	// The handler calls Level.Level for each record processed;
-	// to adjust the minimum level dynamically, use a LevelVar.
-	Level slog.Leveler
-
-	// ReplaceAttr is called to rewrite each non-group attribute before it is logged.
-	// The attribute's value has been resolved (see [Value.Resolve]).
-	// If ReplaceAttr returns an Attr with Key == "", the attribute is discarded.
-	//
-	// The built-in attributes with keys "time", "level", "source", and "msg"
-	// are passed to this function, except that time is omitted
-	// if zero, and source is omitted if AddSource is false.
-	//
-	// The first argument is a list of currently open groups that contain the
-	// Attr. It must not be retained or modified. ReplaceAttr is never called
-	// for Group attributes, only their contents. For example, the attribute
-	// list
-	//
-	//     Int("a", 1), Group("g", Int("b", 2)), Int("c", 3)
-	//
-	// results in consecutive calls to ReplaceAttr with the following arguments:
-	//
-	//     nil, Int("a", 1)
-	//     []string{"g"}, Int("b", 2)
-	//     nil, Int("c", 3)
-	//
-	// ReplaceAttr can be used to change the default keys of the built-in
-	// attributes, convert types (for example, to replace a `time.Time` with the
-	// integer seconds since the Unix epoch), sanitize personal information, or
-	// remove attributes from the output.
-	ReplaceAttr func(groups []string, a slog.Attr) slog.Attr
-}
-
 // Keys for "built-in" attributes.
 const (
 	// TimeKey is the key used by the built-in handlers for the time
@@ -189,9 +104,10 @@ const (
 	SourceKey = "source"
 )
 
-type commonHandler struct {
-	json              bool // true => output JSON; false => output text
-	opts              HandlerOptions
+// TextHandler is a Handler that writes Records to an io.Writer as a
+// sequence of key=value pairs separated by spaces and followed by a newline.
+type TextHandler struct {
+	opts              slog.HandlerOptions
 	preformattedAttrs []byte
 	groupPrefix       string   // for text: prefix of groups opened in preformatting
 	groups            []string // all groups started from WithGroup
@@ -200,10 +116,9 @@ type commonHandler struct {
 	w                 io.Writer
 }
 
-func (h *commonHandler) clone() *commonHandler {
+func (h *TextHandler) clone() *TextHandler {
 	// We can't use assignment because we can't copy the mutex.
-	return &commonHandler{
-		json:              h.json,
+	return &TextHandler{
 		opts:              h.opts,
 		preformattedAttrs: slices.Clip(h.preformattedAttrs),
 		groupPrefix:       h.groupPrefix,
@@ -215,7 +130,7 @@ func (h *commonHandler) clone() *commonHandler {
 
 // enabled reports whether l is greater than or equal to the
 // minimum level.
-func (h *commonHandler) enabled(l slog.Level) bool {
+func (h *TextHandler) enabled(l slog.Level) bool {
 	minLevel := slog.LevelInfo
 	if h.opts.Level != nil {
 		minLevel = h.opts.Level.Level()
@@ -223,7 +138,7 @@ func (h *commonHandler) enabled(l slog.Level) bool {
 	return l >= minLevel
 }
 
-func (h *commonHandler) withAttrs(as []slog.Attr) *commonHandler {
+func (h *TextHandler) withAttrs(as []slog.Attr) *TextHandler {
 	h2 := h.clone()
 	// Pre-format the attributes as an optimization.
 	prefix := buffer.New()
@@ -231,9 +146,6 @@ func (h *commonHandler) withAttrs(as []slog.Attr) *commonHandler {
 	prefix.WriteString(h.groupPrefix)
 	state := h2.newHandleState((*buffer.Buffer)(&h2.preformattedAttrs), false, "", prefix)
 	defer state.free()
-	if len(h2.preformattedAttrs) > 0 {
-		state.sep = h.attrSep()
-	}
 	state.openGroups()
 	for _, a := range as {
 		state.appendAttr(a)
@@ -246,7 +158,7 @@ func (h *commonHandler) withAttrs(as []slog.Attr) *commonHandler {
 	return h2
 }
 
-func (h *commonHandler) withGroup(name string) *commonHandler {
+func (h *TextHandler) withGroup(name string) *TextHandler {
 	if name == "" {
 		return h
 	}
@@ -255,12 +167,9 @@ func (h *commonHandler) withGroup(name string) *commonHandler {
 	return h2
 }
 
-func (h *commonHandler) handle(r slog.Record) error {
+func (h *TextHandler) handle(r slog.Record) error {
 	state := h.newHandleState(buffer.New(), true, "", nil)
 	defer state.free()
-	if h.json {
-		state.buf.WriteByte('{')
-	}
 	// Built-in attributes. They are not in a group.
 	stateGroups := state.groups
 	state.groups = nil // So ReplaceAttrs sees no groups instead of the pre groups.
@@ -331,9 +240,8 @@ func recordFrame(r slog.Record) runtime.Frame {
 func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	// preformatted Attrs
 	if len(s.h.preformattedAttrs) > 0 {
-		s.buf.WriteString(s.sep)
+		s.buf.WriteString(" ")
 		s.buf.Write(s.h.preformattedAttrs)
-		s.sep = s.h.attrSep()
 	}
 	// Attrs in Record -- unlike the built-in ones, they are in groups started
 	// from WithGroup.
@@ -344,32 +252,15 @@ func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	r.Attrs(func(a slog.Attr) {
 		s.appendAttr(a)
 	})
-	if s.h.json {
-		// Close all open groups.
-		for range s.h.groups {
-			s.buf.WriteByte('}')
-		}
-		// Close the top-level object.
-		s.buf.WriteByte('}')
-	}
 }
 
-// attrSep returns the separator between attributes.
-func (h *commonHandler) attrSep() string {
-	if h.json {
-		return ","
-	}
-	return " "
-}
-
-// handleState holds state for a single call to commonHandler.handle.
+// handleState holds state for a single call to TextHandler.handle.
 // The initial value of sep determines whether to emit a separator
 // before the next key, after which it stays true.
 type handleState struct {
-	h       *commonHandler
+	h       *TextHandler
 	buf     *buffer.Buffer
 	freeBuf bool           // should buf be freed?
-	sep     string         // separator to write before next key
 	prefix  *buffer.Buffer // for text: key prefix
 	groups  *[]string      // pool-allocated slice of active groups, for ReplaceAttr
 }
@@ -379,12 +270,11 @@ var groupPool = sync.Pool{New: func() any {
 	return &s
 }}
 
-func (h *commonHandler) newHandleState(buf *buffer.Buffer, freeBuf bool, sep string, prefix *buffer.Buffer) handleState {
+func (h *TextHandler) newHandleState(buf *buffer.Buffer, freeBuf bool, sep string, prefix *buffer.Buffer) handleState {
 	s := handleState{
 		h:       h,
 		buf:     buf,
 		freeBuf: freeBuf,
-		sep:     sep,
 		prefix:  prefix,
 	}
 	if h.opts.ReplaceAttr != nil {
@@ -416,14 +306,8 @@ const keyComponentSep = '.'
 // openGroup starts a new group of attributes
 // with the given name.
 func (s *handleState) openGroup(name string) {
-	if s.h.json {
-		s.appendKey(name)
-		s.buf.WriteByte('{')
-		s.sep = ""
-	} else {
-		s.prefix.WriteString(name)
-		s.prefix.WriteByte(keyComponentSep)
-	}
+	s.prefix.WriteString(name)
+	s.prefix.WriteByte(keyComponentSep)
 	// Collect group names for ReplaceAttr.
 	if s.groups != nil {
 		*s.groups = append(*s.groups, name)
@@ -433,12 +317,7 @@ func (s *handleState) openGroup(name string) {
 
 // closeGroup ends the group with the given name.
 func (s *handleState) closeGroup(name string) {
-	if s.h.json {
-		s.buf.WriteByte('}')
-	} else {
-		(*s.prefix) = (*s.prefix)[:len(*s.prefix)-len(name)-1 /* for keyComponentSep */]
-	}
-	s.sep = s.h.attrSep()
+	(*s.prefix) = (*s.prefix)[:len(*s.prefix)-len(name)-1 /* for keyComponentSep */]
 	if s.groups != nil {
 		*s.groups = (*s.groups)[:len(*s.groups)-1]
 	}
@@ -492,74 +371,43 @@ func (s *handleState) appendError(err error) {
 }
 
 func (s *handleState) appendKey(key string) {
-	s.buf.WriteString(s.sep)
+	s.buf.WriteString(" ")
 	if s.prefix != nil {
 		// TODO: optimize by avoiding allocation.
 		s.appendString(string(*s.prefix) + key)
 	} else {
 		s.appendString(key)
 	}
-	if s.h.json {
-		s.buf.WriteByte(':')
-	} else {
-		s.buf.WriteByte('=')
-	}
-	s.sep = s.h.attrSep()
+	s.buf.WriteByte('=')
 }
 
 func (s *handleState) appendSource(file string, line int) {
-	if s.h.json {
-		s.buf.WriteByte('"')
-		*s.buf = appendEscapedJSONString(*s.buf, file)
+	if needsQuoting(file) {
+		s.appendString(file + ":" + strconv.Itoa(line))
+	} else {
+		// common case: no quoting needed.
+		s.appendString(file)
 		s.buf.WriteByte(':')
 		s.buf.WritePosInt(line)
-		s.buf.WriteByte('"')
-	} else {
-		// text
-		if needsQuoting(file) {
-			s.appendString(file + ":" + strconv.Itoa(line))
-		} else {
-			// common case: no quoting needed.
-			s.appendString(file)
-			s.buf.WriteByte(':')
-			s.buf.WritePosInt(line)
-		}
 	}
 }
 
 func (s *handleState) appendString(str string) {
-	if s.h.json {
-		s.buf.WriteByte('"')
-		*s.buf = appendEscapedJSONString(*s.buf, str)
-		s.buf.WriteByte('"')
+	if needsQuoting(str) {
+		*s.buf = strconv.AppendQuote(*s.buf, str)
 	} else {
-		// text
-		if needsQuoting(str) {
-			*s.buf = strconv.AppendQuote(*s.buf, str)
-		} else {
-			s.buf.WriteString(str)
-		}
+		s.buf.WriteString(str)
 	}
 }
 
 func (s *handleState) appendValue(v slog.Value) {
-	var err error
-	if s.h.json {
-		err = appendJSONValue(s, v)
-	} else {
-		err = appendTextValue(s, v)
-	}
-	if err != nil {
+	if err := appendTextValue(s, v); err != nil {
 		s.appendError(err)
 	}
 }
 
 func (s *handleState) appendTime(t time.Time) {
-	if s.h.json {
-		appendJSONTime(s, t)
-	} else {
-		writeTimeRFC3339Millis(s.buf, t)
-	}
+	writeTimeRFC3339Millis(s.buf, t)
 }
 
 // This takes half the time of Time.AppendFormat.
