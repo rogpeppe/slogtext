@@ -9,6 +9,7 @@ import (
 	"encoding"
 	"fmt"
 	"io"
+	"log/slog"
 	"reflect"
 	"strconv"
 	"unicode"
@@ -46,7 +47,7 @@ func (h *TextHandler) Enabled(_ context.Context, level slog.Level) bool {
 
 // WithAttrs returns a new TextHandler whose attributes consists
 // of h's attributes followed by attrs.
-func (h *TextHandler) WithAttrs(attrs []Attr) Handler {
+func (h *TextHandler) WithAttrs(attrs []slog.Attr) Handler {
 	return &TextHandler{commonHandler: h.commonHandler.withAttrs(attrs)}
 }
 
@@ -90,18 +91,18 @@ func (h *TextHandler) WithGroup(name string) Handler {
 //
 // Each call to Handle results in a single serialized call to
 // io.Writer.Write.
-func (h *TextHandler) Handle(_ context.Context, r Record) error {
+func (h *TextHandler) Handle(_ context.Context, r slog.Record) error {
 	return h.commonHandler.handle(r)
 }
 
-func appendTextValue(s *handleState, v Value) error {
+func appendTextValue(s *handleState, v slog.Value) error {
 	switch v.Kind() {
-	case KindString:
-		s.appendString(v.str())
-	case KindTime:
-		s.appendTime(v.time())
-	case KindAny:
-		if tm, ok := v.any.(encoding.TextMarshaler); ok {
+	case slog.KindString:
+		s.appendString(v.String())
+	case slog.KindTime:
+		s.appendTime(v.Time())
+	case slog.KindAny:
+		if tm, ok := v.Any().(encoding.TextMarshaler); ok {
 			data, err := tm.MarshalText()
 			if err != nil {
 				return err
@@ -110,16 +111,43 @@ func appendTextValue(s *handleState, v Value) error {
 			s.appendString(string(data))
 			return nil
 		}
-		if bs, ok := byteSlice(v.any); ok {
+		if bs, ok := byteSlice(v.Any()); ok {
 			// As of Go 1.19, this only allocates for strings longer than 32 bytes.
 			s.buf.WriteString(strconv.Quote(string(bs)))
 			return nil
 		}
 		s.appendString(fmt.Sprintf("%+v", v.Any()))
 	default:
-		*s.buf = v.append(*s.buf)
+		*s.buf = appendValue(v, *s.buf)
 	}
 	return nil
+}
+
+// append appends a text representation of v to dst.
+// v is formatted as with fmt.Sprint.
+func appendValue(v slog.Value, dst []byte) []byte {
+	switch v.Kind() {
+	case slog.KindString:
+		return append(dst, v.String()...)
+	case slog.KindInt64:
+		return strconv.AppendInt(dst, v.Int64(), 10)
+	case slog.KindUint64:
+		return strconv.AppendUint(dst, v.Uint64(), 10)
+	case slog.KindFloat64:
+		return strconv.AppendFloat(dst, v.Float64(), 'g', -1, 64)
+	case slog.KindBool:
+		return strconv.AppendBool(dst, v.Bool())
+	case slog.KindDuration:
+		return append(dst, v.Duration().String()...)
+	case slog.KindTime:
+		return append(dst, v.Time().String()...)
+	case slog.KindGroup:
+		return fmt.Append(dst, v.Group())
+	case slog.KindAny, slog.KindLogValuer:
+		return fmt.Append(dst, v.Any())
+	default:
+		panic(fmt.Sprintf("bad kind: %s", v.Kind()))
+	}
 }
 
 // byteSlice returns its argument as a []byte if the argument's

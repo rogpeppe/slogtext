@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"strconv"
 	"time"
@@ -50,7 +51,7 @@ func (h *JSONHandler) Enabled(_ context.Context, level slog.Level) bool {
 
 // WithAttrs returns a new JSONHandler whose attributes consists
 // of h's attributes followed by attrs.
-func (h *JSONHandler) WithAttrs(attrs []Attr) Handler {
+func (h *JSONHandler) WithAttrs(attrs []slog.Attr) Handler {
 	return &JSONHandler{commonHandler: h.commonHandler.withAttrs(attrs)}
 }
 
@@ -85,7 +86,7 @@ func (h *JSONHandler) WithGroup(name string) Handler {
 //   - HTML characters are not escaped.
 //
 // Each call to Handle results in a single serialized call to io.Writer.Write.
-func (h *JSONHandler) Handle(_ context.Context, r Record) error {
+func (h *JSONHandler) Handle(_ context.Context, r slog.Record) error {
 	return h.commonHandler.handle(r)
 }
 
@@ -101,15 +102,15 @@ func appendJSONTime(s *handleState, t time.Time) {
 	s.buf.WriteByte('"')
 }
 
-func appendJSONValue(s *handleState, v Value) error {
+func appendJSONValue(s *handleState, v slog.Value) error {
 	switch v.Kind() {
-	case KindString:
-		s.appendString(v.str())
-	case KindInt64:
+	case slog.KindString:
+		s.appendString(v.String())
+	case slog.KindInt64:
 		*s.buf = strconv.AppendInt(*s.buf, v.Int64(), 10)
-	case KindUint64:
+	case slog.KindUint64:
 		*s.buf = strconv.AppendUint(*s.buf, v.Uint64(), 10)
-	case KindFloat64:
+	case slog.KindFloat64:
 		f := v.Float64()
 		// json.Marshal fails on special floats, so handle them here.
 		switch {
@@ -127,14 +128,14 @@ func appendJSONValue(s *handleState, v Value) error {
 				return err
 			}
 		}
-	case KindBool:
+	case slog.KindBool:
 		*s.buf = strconv.AppendBool(*s.buf, v.Bool())
-	case KindDuration:
+	case slog.KindDuration:
 		// Do what json.Marshal does.
 		*s.buf = strconv.AppendInt(*s.buf, int64(v.Duration()), 10)
-	case KindTime:
+	case slog.KindTime:
 		s.appendTime(v.Time())
-	case KindAny:
+	case slog.KindAny:
 		a := v.Any()
 		if err, ok := a.(error); ok {
 			s.appendString(err.Error())

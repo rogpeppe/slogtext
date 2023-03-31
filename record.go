@@ -4,6 +4,8 @@
 
 package slogtext
 
+import "log/slog"
+
 const nAttrsInline = 5
 
 // countAttrs returns the number of Attrs that would be created from args.
@@ -26,21 +28,21 @@ const badKey = "!BADKEY"
 // If args[0] is a string, it treats the first two elements as
 // a key-value pair.
 // Otherwise, it treats args[0] as a value with a missing key.
-func argsToAttr(args []any) (Attr, []any) {
+func argsToAttr(args []any) (slog.Attr, []any) {
 	switch x := args[0].(type) {
 	case string:
 		if len(args) == 1 {
-			return String(badKey, x), nil
+			return slog.String(badKey, x), nil
 		}
-		a := Any(x, args[1])
+		a := slog.Any(x, args[1])
 		a.Value = a.Value.Resolve()
 		return a, args[2:]
 
-	case Attr:
+	case slog.Attr:
 		x.Value = x.Value.Resolve()
 		return x, args[1:]
 
 	default:
-		return Any(badKey, x), args[1:]
+		return slog.Any(badKey, x), args[1:]
 	}
 }

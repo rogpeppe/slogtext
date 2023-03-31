@@ -7,6 +7,7 @@ package slogtext
 import (
 	"context"
 	"log"
+	"log/slog"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -36,7 +37,7 @@ func SetDefault(l *Logger) {
 	// See TestSetDefault.
 	if _, ok := l.Handler().(*defaultHandler); !ok {
 		capturePC := log.Flags()&(log.Lshortfile|log.Llongfile) != 0
-		log.SetOutput(&handlerWriter{l.Handler(), LevelInfo, capturePC})
+		log.SetOutput(&handlerWriter{l.Handler(), slog.LevelInfo, capturePC})
 		log.SetFlags(0) // we want just the log message, no time or location
 	}
 }
@@ -66,7 +67,7 @@ func (w *handlerWriter) Write(buf []byte) (int, error) {
 	if len(buf) > 0 && buf[len(buf)-1] == '\n' {
 		buf = buf[:len(buf)-1]
 	}
-	r := NewRecord(time.Now(), w.level, string(buf), pc)
+	r := slog.NewRecord(time.Now(), w.level, string(buf), pc)
 	return origLen, w.h.Handle(context.Background(), r)
 }
 
@@ -96,8 +97,8 @@ func (l *Logger) Handler() Handler { return l.handler }
 // handler.
 func (l *Logger) With(args ...any) *Logger {
 	var (
-		attr  Attr
-		attrs []Attr
+		attr  slog.Attr
+		attrs []slog.Attr
 	)
 	for len(args) > 0 {
 		attr, args = argsToAttr(args)
@@ -166,48 +167,48 @@ func (l *Logger) Log(ctx context.Context, level slog.Level, msg string, args ...
 }
 
 // LogAttrs is a more efficient version of [Logger.Log] that accepts only Attrs.
-func (l *Logger) LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...Attr) {
+func (l *Logger) LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
 	l.logAttrs(ctx, level, msg, attrs...)
 }
 
 // Debug logs at LevelDebug.
 func (l *Logger) Debug(msg string, args ...any) {
-	l.log(nil, LevelDebug, msg, args...)
+	l.log(nil, slog.LevelDebug, msg, args...)
 }
 
 // DebugCtx logs at LevelDebug with the given context.
 func (l *Logger) DebugCtx(ctx context.Context, msg string, args ...any) {
-	l.log(ctx, LevelDebug, msg, args...)
+	l.log(ctx, slog.LevelDebug, msg, args...)
 }
 
 // Info logs at LevelInfo.
 func (l *Logger) Info(msg string, args ...any) {
-	l.log(nil, LevelInfo, msg, args...)
+	l.log(nil, slog.LevelInfo, msg, args...)
 }
 
 // InfoCtx logs at LevelInfo with the given context.
 func (l *Logger) InfoCtx(ctx context.Context, msg string, args ...any) {
-	l.log(ctx, LevelInfo, msg, args...)
+	l.log(ctx, slog.LevelInfo, msg, args...)
 }
 
 // Warn logs at LevelWarn.
 func (l *Logger) Warn(msg string, args ...any) {
-	l.log(nil, LevelWarn, msg, args...)
+	l.log(nil, slog.LevelWarn, msg, args...)
 }
 
 // WarnCtx logs at LevelWarn with the given context.
 func (l *Logger) WarnCtx(ctx context.Context, msg string, args ...any) {
-	l.log(ctx, LevelWarn, msg, args...)
+	l.log(ctx, slog.LevelWarn, msg, args...)
 }
 
 // Error logs at LevelError.
 func (l *Logger) Error(msg string, args ...any) {
-	l.log(nil, LevelError, msg, args...)
+	l.log(nil, slog.LevelError, msg, args...)
 }
 
 // ErrorCtx logs at LevelError with the given context.
 func (l *Logger) ErrorCtx(ctx context.Context, msg string, args ...any) {
-	l.log(ctx, LevelError, msg, args...)
+	l.log(ctx, slog.LevelError, msg, args...)
 }
 
 // log is the low-level logging method for methods that take ...any.
@@ -224,7 +225,7 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, args ...
 		runtime.Callers(3, pcs[:])
 		pc = pcs[0]
 	}
-	r := NewRecord(time.Now(), level, msg, pc)
+	r := slog.NewRecord(time.Now(), level, msg, pc)
 	r.Add(args...)
 	if ctx == nil {
 		ctx = context.Background()
@@ -233,7 +234,7 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, args ...
 }
 
 // logAttrs is like [Logger.log], but for methods that take ...Attr.
-func (l *Logger) logAttrs(ctx context.Context, level slog.Level, msg string, attrs ...Attr) {
+func (l *Logger) logAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
 	if !l.Enabled(ctx, level) {
 		return
 	}
@@ -244,7 +245,7 @@ func (l *Logger) logAttrs(ctx context.Context, level slog.Level, msg string, att
 		runtime.Callers(3, pcs[:])
 		pc = pcs[0]
 	}
-	r := NewRecord(time.Now(), level, msg, pc)
+	r := slog.NewRecord(time.Now(), level, msg, pc)
 	r.AddAttrs(attrs...)
 	if ctx == nil {
 		ctx = context.Background()
@@ -254,42 +255,42 @@ func (l *Logger) logAttrs(ctx context.Context, level slog.Level, msg string, att
 
 // Debug calls Logger.Debug on the default logger.
 func Debug(msg string, args ...any) {
-	Default().log(nil, LevelDebug, msg, args...)
+	Default().log(nil, slog.LevelDebug, msg, args...)
 }
 
 // DebugCtx calls Logger.DebugCtx on the default logger.
 func DebugCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, LevelDebug, msg, args...)
+	Default().log(ctx, slog.LevelDebug, msg, args...)
 }
 
 // Info calls Logger.Info on the default logger.
 func Info(msg string, args ...any) {
-	Default().log(nil, LevelInfo, msg, args...)
+	Default().log(nil, slog.LevelInfo, msg, args...)
 }
 
 // InfoCtx calls Logger.InfoCtx on the default logger.
 func InfoCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, LevelInfo, msg, args...)
+	Default().log(ctx, slog.LevelInfo, msg, args...)
 }
 
 // Warn calls Logger.Warn on the default logger.
 func Warn(msg string, args ...any) {
-	Default().log(nil, LevelWarn, msg, args...)
+	Default().log(nil, slog.LevelWarn, msg, args...)
 }
 
 // WarnCtx calls Logger.WarnCtx on the default logger.
 func WarnCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, LevelWarn, msg, args...)
+	Default().log(ctx, slog.LevelWarn, msg, args...)
 }
 
 // Error calls Logger.Error on the default logger.
 func Error(msg string, args ...any) {
-	Default().log(nil, LevelError, msg, args...)
+	Default().log(nil, slog.LevelError, msg, args...)
 }
 
 // ErrorCtx calls Logger.ErrorCtx on the default logger.
 func ErrorCtx(ctx context.Context, msg string, args ...any) {
-	Default().log(ctx, LevelError, msg, args...)
+	Default().log(ctx, slog.LevelError, msg, args...)
 }
 
 // Log calls Logger.Log on the default logger.
@@ -298,6 +299,6 @@ func Log(ctx context.Context, level slog.Level, msg string, args ...any) {
 }
 
 // LogAttrs calls Logger.LogAttrs on the default logger.
-func LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...Attr) {
+func LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
 	Default().logAttrs(ctx, level, msg, attrs...)
 }

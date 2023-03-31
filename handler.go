@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime"
 	"slices"
 	"strconv"
 	"sync"
@@ -57,13 +58,13 @@ type Handler interface {
 	//   - If a group's key is empty, inline the group's Attrs.
 	//   - If a group has no Attrs (even if it has a non-empty key),
 	//     ignore it.
-	Handle(context.Context, Record) error
+	Handle(context.Context, slog.Record) error
 
 	// WithAttrs returns a new Handler whose attributes consist of
 	// both the receiver's attributes and the arguments.
 	// The Handler owns the slice: it may retain, modify or discard it.
 	// [Logger.With] will resolve the Attrs.
-	WithAttrs(attrs []Attr) Handler
+	WithAttrs(attrs []slog.Attr) Handler
 
 	// WithGroup returns a new Handler with the given group appended to
 	// the receiver's existing groups.
@@ -101,13 +102,13 @@ func newDefaultHandler(output func(int, string) error) *defaultHandler {
 }
 
 func (*defaultHandler) Enabled(_ context.Context, l slog.Level) bool {
-	return l >= LevelInfo
+	return l >= slog.LevelInfo
 }
 
 // Collect the level, attributes and message in a string and
 // write it with the default log.Logger.
 // Let the log.Logger handle time and file/line.
-func (h *defaultHandler) Handle(ctx context.Context, r Record) error {
+func (h *defaultHandler) Handle(ctx context.Context, r slog.Record) error {
 	buf := buffer.New()
 	buf.WriteString(r.Level.String())
 	buf.WriteByte(' ')
@@ -120,7 +121,7 @@ func (h *defaultHandler) Handle(ctx context.Context, r Record) error {
 	return h.output(4, buf.String())
 }
 
-func (h *defaultHandler) WithAttrs(as []Attr) Handler {
+func (h *defaultHandler) WithAttrs(as []slog.Attr) Handler {
 	return &defaultHandler{h.ch.withAttrs(as), h.output}
 }
 
@@ -142,7 +143,7 @@ type HandlerOptions struct {
 	// If Level is nil, the handler assumes LevelInfo.
 	// The handler calls Level.Level for each record processed;
 	// to adjust the minimum level dynamically, use a LevelVar.
-	Level Leveler
+	Level slog.Leveler
 
 	// ReplaceAttr is called to rewrite each non-group attribute before it is logged.
 	// The attribute's value has been resolved (see [Value.Resolve]).
@@ -169,7 +170,7 @@ type HandlerOptions struct {
 	// attributes, convert types (for example, to replace a `time.Time` with the
 	// integer seconds since the Unix epoch), sanitize personal information, or
 	// remove attributes from the output.
-	ReplaceAttr func(groups []string, a Attr) Attr
+	ReplaceAttr func(groups []string, a slog.Attr) slog.Attr
 }
 
 // Keys for "built-in" attributes.
@@ -215,14 +216,14 @@ func (h *commonHandler) clone() *commonHandler {
 // enabled reports whether l is greater than or equal to the
 // minimum level.
 func (h *commonHandler) enabled(l slog.Level) bool {
-	minLevel := LevelInfo
+	minLevel := slog.LevelInfo
 	if h.opts.Level != nil {
 		minLevel = h.opts.Level.Level()
 	}
 	return l >= minLevel
 }
 
-func (h *commonHandler) withAttrs(as []Attr) *commonHandler {
+func (h *commonHandler) withAttrs(as []slog.Attr) *commonHandler {
 	h2 := h.clone()
 	// Pre-format the attributes as an optimization.
 	prefix := buffer.New()
@@ -254,7 +255,7 @@ func (h *commonHandler) withGroup(name string) *commonHandler {
 	return h2
 }
 
-func (h *commonHandler) handle(r Record) error {
+func (h *commonHandler) handle(r slog.Record) error {
 	state := h.newHandleState(buffer.New(), true, "", nil)
 	defer state.free()
 	if h.json {
@@ -272,7 +273,7 @@ func (h *commonHandler) handle(r Record) error {
 			state.appendKey(key)
 			state.appendTime(val)
 		} else {
-			state.appendAttr(Time(key, val))
+			state.appendAttr(slog.Time(key, val))
 		}
 	}
 	// level
@@ -282,11 +283,11 @@ func (h *commonHandler) handle(r Record) error {
 		state.appendKey(key)
 		state.appendString(val.String())
 	} else {
-		state.appendAttr(Any(key, val))
+		state.appendAttr(slog.Any(key, val))
 	}
 	// source
 	if h.opts.AddSource {
-		frame := r.frame()
+		frame := recordFrame(r)
 		if frame.File != "" {
 			key := SourceKey
 			if rep == nil {
@@ -299,7 +300,7 @@ func (h *commonHandler) handle(r Record) error {
 				buf.WritePosInt(frame.Line)
 				s := buf.String()
 				buf.Free()
-				state.appendAttr(String(key, s))
+				state.appendAttr(slog.String(key, s))
 			}
 		}
 	}
@@ -309,7 +310,7 @@ func (h *commonHandler) handle(r Record) error {
 		state.appendKey(key)
 		state.appendString(msg)
 	} else {
-		state.appendAttr(String(key, msg))
+		state.appendAttr(slog.String(key, msg))
 	}
 	state.groups = stateGroups // Restore groups passed to ReplaceAttrs.
 	state.appendNonBuiltIns(r)
@@ -321,7 +322,13 @@ func (h *commonHandler) handle(r Record) error {
 	return err
 }
 
-func (s *handleState) appendNonBuiltIns(r Record) {
+func recordFrame(r slog.Record) runtime.Frame {
+	fs := runtime.CallersFrames([]uintptr{r.PC})
+	f, _ := fs.Next()
+	return f
+}
+
+func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	// preformatted Attrs
 	if len(s.h.preformattedAttrs) > 0 {
 		s.buf.WriteString(s.sep)
@@ -334,7 +341,7 @@ func (s *handleState) appendNonBuiltIns(r Record) {
 	defer s.prefix.Free()
 	s.prefix.WriteString(s.h.groupPrefix)
 	s.openGroups()
-	r.Attrs(func(a Attr) {
+	r.Attrs(func(a slog.Attr) {
 		s.appendAttr(a)
 	})
 	if s.h.json {
@@ -440,18 +447,18 @@ func (s *handleState) closeGroup(name string) {
 // appendAttr appends the Attr's key and value using app.
 // It handles replacement and checking for an empty key.
 // after replacement).
-func (s *handleState) appendAttr(a Attr) {
+func (s *handleState) appendAttr(a slog.Attr) {
 	v := a.Value
 	// Elide a non-group with an empty key.
-	if a.Key == "" && v.Kind() != KindGroup {
+	if a.Key == "" && v.Kind() != slog.KindGroup {
 		return
 	}
-	if rep := s.h.opts.ReplaceAttr; rep != nil && v.Kind() != KindGroup {
+	if rep := s.h.opts.ReplaceAttr; rep != nil && v.Kind() != slog.KindGroup {
 		var gs []string
 		if s.groups != nil {
 			gs = *s.groups
 		}
-		a = rep(gs, Attr{a.Key, v})
+		a = rep(gs, slog.Attr{a.Key, v})
 		if a.Key == "" {
 			return
 		}
@@ -459,7 +466,7 @@ func (s *handleState) appendAttr(a Attr) {
 		// This one came from the user, so it may not have been.
 		v = a.Value.Resolve()
 	}
-	if v.Kind() == KindGroup {
+	if v.Kind() == slog.KindGroup {
 		attrs := v.Group()
 		// Output only non-empty groups.
 		if len(attrs) > 0 {
@@ -535,7 +542,7 @@ func (s *handleState) appendString(str string) {
 	}
 }
 
-func (s *handleState) appendValue(v Value) {
+func (s *handleState) appendValue(v slog.Value) {
 	var err error
 	if s.h.json {
 		err = appendJSONValue(s, v)
