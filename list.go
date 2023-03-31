@@ -1,4 +1,4 @@
-package slog
+package slogtext
 
 // A list[T] is an immutable sequence.
 // It supports three operations: append, len and indexing (at).

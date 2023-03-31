@@ -1,4 +1,4 @@
-package slog
+package slogtext
 
 import (
 	"testing"

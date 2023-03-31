@@ -4,11 +4,13 @@
 
 //go:build !nopc
 
-package slog
+package slogtext
 
 import (
 	"runtime"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
 // These functions compute the pc early and pass it down the call chain,
@@ -17,7 +19,7 @@ import (
 // LogDepth is like [Logger.Log], but accepts a call depth to adjust the
 // file and line number in the log record. 1 refers to the caller
 // of LogDepth; 2 refers to the caller's caller; and so on.
-func (l *Logger) LogDepth(calldepth int, level Level, msg string, args ...any) {
+func (l *Logger) LogDepth(calldepth int, level slog.Level, msg string, args ...any) {
 	if !l.Enabled(level) {
 		return
 	}
@@ -28,7 +30,7 @@ func (l *Logger) LogDepth(calldepth int, level Level, msg string, args ...any) {
 
 // LogAttrsDepth is like [Logger.LogAttrs], but accepts a call depth argument
 // which it interprets like [Logger.LogDepth].
-func (l *Logger) LogAttrsDepth(calldepth int, level Level, msg string, attrs ...Attr) {
+func (l *Logger) LogAttrsDepth(calldepth int, level slog.Level, msg string, attrs ...Attr) {
 	if !l.Enabled(level) {
 		return
 	}
@@ -45,7 +47,7 @@ func (l *Logger) LogAttrsDepth(calldepth int, level Level, msg string, attrs ...
 // TODO: When slog moves to the standard library, replace the fixed call depth
 // with logic based on the Record's pc, and remove this function. See the
 // comment on TestConnections/wrap_default_handler.
-func (l *Logger) logDepthErr(err error, calldepth int, level Level, msg string, args ...any) {
+func (l *Logger) logDepthErr(err error, calldepth int, level slog.Level, msg string, args ...any) {
 	if !l.Enabled(level) {
 		return
 	}

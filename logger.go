@@ -2,13 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"context"
 	"log"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
 var defaultLogger atomic.Value
@@ -33,7 +35,7 @@ func SetDefault(l *Logger) {
 	// See TestSetDefault.
 	if _, ok := l.Handler().(*defaultHandler); !ok {
 		capturePC := log.Flags()&(log.Lshortfile|log.Llongfile) != 0
-		log.SetOutput(&handlerWriter{l.Handler(), LevelInfo, capturePC})
+		log.SetOutput(&handlerWriter{l.Handler(), slog.LevelInfo, capturePC})
 		log.SetFlags(0) // we want just the log message, no time or location
 	}
 }
@@ -42,7 +44,7 @@ func SetDefault(l *Logger) {
 // It is used to link the default log.Logger to the default slog.Logger.
 type handlerWriter struct {
 	h         Handler
-	level     Level
+	level     slog.Level
 	capturePC bool
 }
 
@@ -143,14 +145,14 @@ func With(args ...any) *Logger {
 }
 
 // Enabled reports whether l emits log records at the given level.
-func (l *Logger) Enabled(level Level) bool {
+func (l *Logger) Enabled(level slog.Level) bool {
 	return l.Handler().Enabled(l.ctx, level)
 }
 
 // NewLogLogger returns a new log.Logger such that each call to its Output method
 // dispatches a Record to the specified handler. The logger acts as a bridge from
 // the older log API to newer structured logging handlers.
-func NewLogLogger(h Handler, level Level) *log.Logger {
+func NewLogLogger(h Handler, level slog.Level) *log.Logger {
 	return log.New(&handlerWriter{h, level, true}, "", 0)
 }
 
@@ -164,11 +166,11 @@ func NewLogLogger(h Handler, level Level) *log.Logger {
 //     the following argument is treated as the value and the two are combined
 //     into an Attr.
 //   - Otherwise, the argument is treated as a value with key "!BADKEY".
-func (l *Logger) Log(level Level, msg string, args ...any) {
+func (l *Logger) Log(level slog.Level, msg string, args ...any) {
 	l.LogDepth(1, level, msg, args...)
 }
 
-func (l *Logger) logPC(err error, pc uintptr, level Level, msg string, args ...any) {
+func (l *Logger) logPC(err error, pc uintptr, level slog.Level, msg string, args ...any) {
 	r := NewRecord(time.Now(), level, msg, pc, l.ctx)
 	if err != nil {
 		r.front[0] = Any(ErrorKey, err)
@@ -179,58 +181,58 @@ func (l *Logger) logPC(err error, pc uintptr, level Level, msg string, args ...a
 }
 
 // LogAttrs is a more efficient version of [Logger.Log] that accepts only Attrs.
-func (l *Logger) LogAttrs(level Level, msg string, attrs ...Attr) {
+func (l *Logger) LogAttrs(level slog.Level, msg string, attrs ...Attr) {
 	l.LogAttrsDepth(1, level, msg, attrs...)
 }
 
 // Debug logs at LevelDebug.
 func (l *Logger) Debug(msg string, args ...any) {
-	l.LogDepth(1, LevelDebug, msg, args...)
+	l.LogDepth(1, slog.LevelDebug, msg, args...)
 }
 
 // Info logs at LevelInfo.
 func (l *Logger) Info(msg string, args ...any) {
-	l.LogDepth(1, LevelInfo, msg, args...)
+	l.LogDepth(1, slog.LevelInfo, msg, args...)
 }
 
 // Warn logs at LevelWarn.
 func (l *Logger) Warn(msg string, args ...any) {
-	l.LogDepth(1, LevelWarn, msg, args...)
+	l.LogDepth(1, slog.LevelWarn, msg, args...)
 }
 
 // Error logs at LevelError.
 // If err is non-nil, Error adds Any(ErrorKey, err)
 // before the list of attributes.
 func (l *Logger) Error(msg string, err error, args ...any) {
-	l.logDepthErr(err, 1, LevelError, msg, args...)
+	l.logDepthErr(err, 1, slog.LevelError, msg, args...)
 }
 
 // Debug calls Logger.Debug on the default logger.
 func Debug(msg string, args ...any) {
-	Default().LogDepth(1, LevelDebug, msg, args...)
+	Default().LogDepth(1, slog.LevelDebug, msg, args...)
 }
 
 // Info calls Logger.Info on the default logger.
 func Info(msg string, args ...any) {
-	Default().LogDepth(1, LevelInfo, msg, args...)
+	Default().LogDepth(1, slog.LevelInfo, msg, args...)
 }
 
 // Warn calls Logger.Warn on the default logger.
 func Warn(msg string, args ...any) {
-	Default().LogDepth(1, LevelWarn, msg, args...)
+	Default().LogDepth(1, slog.LevelWarn, msg, args...)
 }
 
 // Error calls Logger.Error on the default logger.
 func Error(msg string, err error, args ...any) {
-	Default().logDepthErr(err, 1, LevelError, msg, args...)
+	Default().logDepthErr(err, 1, slog.LevelError, msg, args...)
 }
 
 // Log calls Logger.Log on the default logger.
-func Log(level Level, msg string, args ...any) {
+func Log(level slog.Level, msg string, args ...any) {
 	Default().LogDepth(1, level, msg, args...)
 }
 
 // LogAttrs calls Logger.LogAttrs on the default logger.
-func LogAttrs(level Level, msg string, attrs ...Attr) {
+func LogAttrs(level slog.Level, msg string, attrs ...Attr) {
 	Default().LogAttrsDepth(1, level, msg, attrs...)
 }

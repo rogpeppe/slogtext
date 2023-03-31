@@ -7,7 +7,7 @@
 
 //go:build nopc
 
-package slog
+package slogtext
 
 import "time"
 

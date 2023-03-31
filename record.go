@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"golang.org/x/exp/slices"
+	"golang.org/x/exp/slog"
 )
 
 const nAttrsInline = 5
@@ -26,7 +27,7 @@ type Record struct {
 	Message string
 
 	// The level of the event.
-	Level Level
+	Level slog.Level
 
 	// The context of the Logger that created the Record. Present
 	// solely to provide Handlers access to the context's values.
@@ -61,7 +62,7 @@ type Record struct {
 //
 // NewRecord is intended for logging APIs that want to support a [Handler] as
 // a backend.
-func NewRecord(t time.Time, level Level, msg string, pc uintptr, ctx context.Context) Record {
+func NewRecord(t time.Time, level slog.Level, msg string, pc uintptr, ctx context.Context) Record {
 	return Record{
 		Time:    t,
 		Message: msg,

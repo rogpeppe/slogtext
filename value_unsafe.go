@@ -4,7 +4,7 @@
 
 //go:build !safe_values
 
-package slog
+package slogtext
 
 // This file defines the most compact representation of Value.
 

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"strconv"
@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/exp/slices"
 	"github.com/rogpeppe/slogtext/internal/buffer"
+	"golang.org/x/exp/slices"
+	"golang.org/x/exp/slog"
 )
 
 func TestRecordAttrs(t *testing.T) {
@@ -96,7 +97,7 @@ func TestAliasingAndClone(t *testing.T) {
 }
 
 func newRecordWithAttrs(as []Attr) Record {
-	r := NewRecord(time.Now(), LevelInfo, "", 0, nil)
+	r := NewRecord(time.Now(), slog.LevelInfo, "", 0, nil)
 	r.AddAttrs(as...)
 	return r
 }
@@ -127,7 +128,7 @@ func BenchmarkPC(b *testing.B) {
 }
 
 func BenchmarkSourceLine(b *testing.B) {
-	r := NewRecord(time.Now(), LevelInfo, "", 5, nil)
+	r := NewRecord(time.Now(), slog.LevelInfo, "", 5, nil)
 	b.Run("alone", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			file, line := sourceLine(r)
@@ -154,7 +155,7 @@ func BenchmarkRecord(b *testing.B) {
 	var a Attr
 
 	for i := 0; i < b.N; i++ {
-		r := NewRecord(time.Time{}, LevelInfo, "", 0, nil)
+		r := NewRecord(time.Time{}, slog.LevelInfo, "", 0, nil)
 		for j := 0; j < nAttrs; j++ {
 			r.AddAttrs(Int("k", j))
 		}

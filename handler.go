@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slog
+package slogtext
 
 import (
 	"context"
@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/exp/slices"
+	"golang.org/x/exp/slog"
+
 	"github.com/rogpeppe/slogtext/internal/buffer"
 )
 
@@ -32,7 +34,7 @@ type Handler interface {
 	// to save effort if the log event should be discarded.
 	// The Logger's context is passed so Enabled can use its values
 	// to make a decision. The context may be nil.
-	Enabled(context.Context, Level) bool
+	Enabled(context.Context, slog.Level) bool
 
 	// Handle handles the Record.
 	// It will only be called if Enabled returns true.
@@ -80,13 +82,13 @@ type defaultHandler struct {
 
 func newDefaultHandler(output func(int, string) error) *defaultHandler {
 	return &defaultHandler{
-		ch:     &commonHandler{json: false},
+		ch:     &commonHandler{},
 		output: output,
 	}
 }
 
-func (*defaultHandler) Enabled(_ context.Context, l Level) bool {
-	return l >= LevelInfo
+func (*defaultHandler) Enabled(_ context.Context, l slog.Level) bool {
+	return l >= slog.LevelInfo
 }
 
 // Collect the level, attributes and message in a string and
@@ -128,7 +130,7 @@ type HandlerOptions struct {
 	// If Level is nil, the handler assumes LevelInfo.
 	// The handler calls Level.Level for each record processed;
 	// to adjust the minimum level dynamically, use a LevelVar.
-	Level Leveler
+	Level slog.Leveler
 
 	// ReplaceAttr is called to rewrite each non-group attribute before it is logged.
 	// The attribute's value has been resolved (see [Value.Resolve]).
@@ -178,7 +180,6 @@ const (
 )
 
 type commonHandler struct {
-	json              bool // true => output JSON; false => output text
 	opts              HandlerOptions
 	preformattedAttrs []byte
 	groupPrefix       string   // for text: prefix of groups opened in preformatting
@@ -191,7 +192,6 @@ type commonHandler struct {
 func (h *commonHandler) clone() *commonHandler {
 	// We can't use assignment because we can't copy the mutex.
 	return &commonHandler{
-		json:              h.json,
 		opts:              h.opts,
 		preformattedAttrs: slices.Clip(h.preformattedAttrs),
 		groupPrefix:       h.groupPrefix,
@@ -203,8 +203,8 @@ func (h *commonHandler) clone() *commonHandler {
 
 // enabled reports whether l is greater than or equal to the
 // minimum level.
-func (h *commonHandler) enabled(l Level) bool {
-	minLevel := LevelInfo
+func (h *commonHandler) enabled(l slog.Level) bool {
+	minLevel := slog.LevelInfo
 	if h.opts.Level != nil {
 		minLevel = h.opts.Level.Level()
 	}
@@ -246,9 +246,6 @@ func (h *commonHandler) withGroup(name string) *commonHandler {
 func (h *commonHandler) handle(r Record) error {
 	state := h.newHandleState(buffer.New(), true, "", nil)
 	defer state.free()
-	if h.json {
-		state.buf.WriteByte('{')
-	}
 	// Built-in attributes. They are not in a group.
 	stateGroups := state.groups
 	state.groups = nil // So ReplaceAttrs sees no groups instead of the pre groups.
@@ -326,21 +323,10 @@ func (s *handleState) appendNonBuiltIns(r Record) {
 	r.Attrs(func(a Attr) {
 		s.appendAttr(a)
 	})
-	if s.h.json {
-		// Close all open groups.
-		for range s.h.groups {
-			s.buf.WriteByte('}')
-		}
-		// Close the top-level object.
-		s.buf.WriteByte('}')
-	}
 }
 
 // attrSep returns the separator between attributes.
 func (h *commonHandler) attrSep() string {
-	if h.json {
-		return ","
-	}
 	return " "
 }
 
@@ -398,14 +384,8 @@ const keyComponentSep = '.'
 // openGroup starts a new group of attributes
 // with the given name.
 func (s *handleState) openGroup(name string) {
-	if s.h.json {
-		s.appendKey(name)
-		s.buf.WriteByte('{')
-		s.sep = ""
-	} else {
-		s.prefix.WriteString(name)
-		s.prefix.WriteByte(keyComponentSep)
-	}
+	s.prefix.WriteString(name)
+	s.prefix.WriteByte(keyComponentSep)
 	// Collect group names for ReplaceAttr.
 	if s.groups != nil {
 		*s.groups = append(*s.groups, name)
@@ -415,11 +395,7 @@ func (s *handleState) openGroup(name string) {
 
 // closeGroup ends the group with the given name.
 func (s *handleState) closeGroup(name string) {
-	if s.h.json {
-		s.buf.WriteByte('}')
-	} else {
-		(*s.prefix) = (*s.prefix)[:len(*s.prefix)-len(name)-1 /* for keyComponentSep */]
-	}
+	(*s.prefix) = (*s.prefix)[:len(*s.prefix)-len(name)-1 /* for keyComponentSep */]
 	s.sep = s.h.attrSep()
 	if s.groups != nil {
 		*s.groups = (*s.groups)[:len(*s.groups)-1]
@@ -481,67 +457,39 @@ func (s *handleState) appendKey(key string) {
 	} else {
 		s.appendString(key)
 	}
-	if s.h.json {
-		s.buf.WriteByte(':')
-	} else {
-		s.buf.WriteByte('=')
-	}
+	s.buf.WriteByte('=')
 	s.sep = s.h.attrSep()
 }
 
 func (s *handleState) appendSource(file string, line int) {
-	if s.h.json {
-		s.buf.WriteByte('"')
-		*s.buf = appendEscapedJSONString(*s.buf, file)
+	// text
+	if needsQuoting(file) {
+		s.appendString(file + ":" + strconv.Itoa(line))
+	} else {
+		// common case: no quoting needed.
+		s.appendString(file)
 		s.buf.WriteByte(':')
 		s.buf.WritePosInt(line)
-		s.buf.WriteByte('"')
-	} else {
-		// text
-		if needsQuoting(file) {
-			s.appendString(file + ":" + strconv.Itoa(line))
-		} else {
-			// common case: no quoting needed.
-			s.appendString(file)
-			s.buf.WriteByte(':')
-			s.buf.WritePosInt(line)
-		}
 	}
 }
 
 func (s *handleState) appendString(str string) {
-	if s.h.json {
-		s.buf.WriteByte('"')
-		*s.buf = appendEscapedJSONString(*s.buf, str)
-		s.buf.WriteByte('"')
+	// text
+	if needsQuoting(str) {
+		*s.buf = strconv.AppendQuote(*s.buf, str)
 	} else {
-		// text
-		if needsQuoting(str) {
-			*s.buf = strconv.AppendQuote(*s.buf, str)
-		} else {
-			s.buf.WriteString(str)
-		}
+		s.buf.WriteString(str)
 	}
 }
 
 func (s *handleState) appendValue(v Value) {
-	var err error
-	if s.h.json {
-		err = appendJSONValue(s, v)
-	} else {
-		err = appendTextValue(s, v)
-	}
-	if err != nil {
+	if err := appendTextValue(s, v); err != nil {
 		s.appendError(err)
 	}
 }
 
 func (s *handleState) appendTime(t time.Time) {
-	if s.h.json {
-		appendJSONTime(s, t)
-	} else {
-		writeTimeRFC3339Millis(s.buf, t)
-	}
+	writeTimeRFC3339Millis(s.buf, t)
 }
 
 // This takes half the time of Time.AppendFormat.

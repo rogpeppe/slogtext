@@ -4,7 +4,7 @@
 
 //go:build race
 
-package slog
+package slogtext
 
 import "testing"
 

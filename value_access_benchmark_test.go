@@ -4,7 +4,7 @@
 
 // Benchmark for accessing Value values.
 
-package slog
+package slogtext
 
 import (
 	"testing"
