@@ -83,7 +83,7 @@ func TestTextHandler(t *testing.T) {
 			} {
 				t.Run(opts.name, func(t *testing.T) {
 					var buf bytes.Buffer
-					h := NewHandlerWithOptions(&buf, opts.opts)
+					h := NewHandlerWithOpts(&buf, opts.opts)
 					r := slog.NewRecord(testTime, slog.LevelInfo, "a message", 0)
 					r.AddAttrs(test.attr)
 					if err := h.Handle(context.Background(), r); err != nil {
@@ -125,7 +125,7 @@ func (t text) MarshalText() ([]byte, error) {
 
 func TestTextHandlerSource(t *testing.T) {
 	var buf bytes.Buffer
-	h := NewHandlerWithOptions(&buf, slog.HandlerOptions{AddSource: true})
+	h := NewHandlerWithOpts(&buf, slog.HandlerOptions{AddSource: true})
 	r := slog.NewRecord(testTime, slog.LevelInfo, "m", callerPC(2))
 	if err := h.Handle(context.Background(), r); err != nil {
 		t.Fatal(err)

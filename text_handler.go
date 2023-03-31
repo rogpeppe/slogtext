@@ -16,7 +16,7 @@ import (
 	"unicode/utf8"
 )
 
-func NewHandlerWithOptions(w io.Writer, opts slog.HandlerOptions) *TextHandler {
+func NewHandlerWithOpts(w io.Writer, opts slog.HandlerOptions) *TextHandler {
 	return &TextHandler{
 		w:    w,
 		opts: opts,
@@ -24,7 +24,7 @@ func NewHandlerWithOptions(w io.Writer, opts slog.HandlerOptions) *TextHandler {
 }
 
 func NewHandler(w io.Writer) *TextHandler {
-	return NewHandlerWithOptions(w, slog.HandlerOptions{})
+	return NewHandlerWithOpts(w, slog.HandlerOptions{})
 }
 
 // Enabled reports whether the handler handles records at the given level.
