@@ -16,30 +16,30 @@ import (
 	"unicode/utf8"
 )
 
-func NewHandlerWithOpts(w io.Writer, opts slog.HandlerOptions) *TextHandler {
-	return &TextHandler{
+func NewHandlerWithOpts(w io.Writer, opts slog.HandlerOptions) *Handler {
+	return &Handler{
 		w:    w,
 		opts: opts,
 	}
 }
 
-func NewHandler(w io.Writer) *TextHandler {
+func NewHandler(w io.Writer) *Handler {
 	return NewHandlerWithOpts(w, slog.HandlerOptions{})
 }
 
 // Enabled reports whether the handler handles records at the given level.
 // The handler ignores records whose level is lower.
-func (h *TextHandler) Enabled(_ context.Context, level slog.Level) bool {
+func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
 	return h.enabled(level)
 }
 
-// WithAttrs returns a new TextHandler whose attributes consists
+// WithAttrs returns a new Handler whose attributes consists
 // of h's attributes followed by attrs.
-func (h *TextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return h.withAttrs(attrs)
 }
 
-func (h *TextHandler) WithGroup(name string) slog.Handler {
+func (h *Handler) WithGroup(name string) slog.Handler {
 	return h.withGroup(name)
 }
 
@@ -79,7 +79,7 @@ func (h *TextHandler) WithGroup(name string) slog.Handler {
 //
 // Each call to Handle results in a single serialized call to
 // io.Writer.Write.
-func (h *TextHandler) Handle(_ context.Context, r slog.Record) error {
+func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	return h.handle(r)
 }
 

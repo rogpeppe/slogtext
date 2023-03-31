@@ -19,7 +19,7 @@ import (
 
 var testTime = time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC)
 
-func TestTextHandler(t *testing.T) {
+func TestHandler(t *testing.T) {
 	for _, test := range []struct {
 		name             string
 		attr             slog.Attr
@@ -123,7 +123,7 @@ func (t text) MarshalText() ([]byte, error) {
 	return []byte(fmt.Sprintf("text{%q}", t.s)), nil
 }
 
-func TestTextHandlerSource(t *testing.T) {
+func TestHandlerSource(t *testing.T) {
 	var buf bytes.Buffer
 	h := NewHandlerWithOpts(&buf, slog.HandlerOptions{AddSource: true})
 	r := slog.NewRecord(testTime, slog.LevelInfo, "m", callerPC(2))
@@ -149,7 +149,7 @@ func TestSourceRegexp(t *testing.T) {
 	}
 }
 
-func TestTextHandlerPreformatted(t *testing.T) {
+func TestHandlerPreformatted(t *testing.T) {
 	var buf bytes.Buffer
 	var h slog.Handler = NewHandler(&buf)
 	h = h.WithAttrs([]slog.Attr{slog.Duration("dur", time.Minute), slog.Bool("b", true)})
@@ -166,7 +166,7 @@ func TestTextHandlerPreformatted(t *testing.T) {
 	}
 }
 
-func TestTextHandlerAlloc(t *testing.T) {
+func TestHandlerAlloc(t *testing.T) {
 	r := slog.NewRecord(time.Now(), slog.LevelInfo, "msg", 0)
 	for i := 0; i < 10; i++ {
 		r.AddAttrs(slog.Int("x = y", i))

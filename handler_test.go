@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestTextHandler1(t *testing.T) {
+func TestHandler1(t *testing.T) {
 	ctx := context.Background()
 
 	// ReplaceAttr functions
@@ -27,27 +27,23 @@ func TestTextHandler1(t *testing.T) {
 		preAttrs []slog.Attr
 		attrs    []slog.Attr
 		wantText string
-		wantJSON string
 	}{
 		{
 			name:     "basic",
 			attrs:    attrs,
 			wantText: "time=2000-01-02T03:04:05.000Z level=INFO msg=message a=one b=2",
-			wantJSON: `{"time":"2000-01-02T03:04:05Z","level":"INFO","msg":"message","a":"one","b":2}`,
 		},
 		{
 			name:     "cap keys",
 			replace:  upperCaseKey,
 			attrs:    attrs,
 			wantText: "TIME=2000-01-02T03:04:05.000Z LEVEL=INFO MSG=message A=one B=2",
-			wantJSON: `{"TIME":"2000-01-02T03:04:05Z","LEVEL":"INFO","MSG":"message","A":"one","B":2}`,
 		},
 		{
 			name:     "remove all",
 			replace:  removeAll,
 			attrs:    attrs,
 			wantText: "",
-			wantJSON: `{}`,
 		},
 		{
 			name:     "preformatted",
@@ -55,7 +51,6 @@ func TestTextHandler1(t *testing.T) {
 			preAttrs: preAttrs,
 			attrs:    attrs,
 			wantText: "time=2000-01-02T03:04:05.000Z level=INFO msg=message pre=3 x=y a=one b=2",
-			wantJSON: `{"time":"2000-01-02T03:04:05Z","level":"INFO","msg":"message","pre":3,"x":"y","a":"one","b":2}`,
 		},
 		{
 			name:     "preformatted cap keys",
@@ -64,7 +59,6 @@ func TestTextHandler1(t *testing.T) {
 			preAttrs: preAttrs,
 			attrs:    attrs,
 			wantText: "TIME=2000-01-02T03:04:05.000Z LEVEL=INFO MSG=message PRE=3 X=y A=one B=2",
-			wantJSON: `{"TIME":"2000-01-02T03:04:05Z","LEVEL":"INFO","MSG":"message","PRE":3,"X":"y","A":"one","B":2}`,
 		},
 		{
 			name:     "preformatted remove all",
@@ -73,14 +67,12 @@ func TestTextHandler1(t *testing.T) {
 			preAttrs: preAttrs,
 			attrs:    attrs,
 			wantText: "",
-			wantJSON: "{}",
 		},
 		{
 			name:     "remove built-in",
 			replace:  removeKeys(slog.TimeKey, slog.LevelKey, slog.MessageKey),
 			attrs:    attrs,
 			wantText: "a=one b=2",
-			wantJSON: `{"a":"one","b":2}`,
 		},
 		{
 			name:     "preformatted remove built-in",
@@ -88,7 +80,6 @@ func TestTextHandler1(t *testing.T) {
 			with:     func(h slog.Handler) slog.Handler { return h.WithAttrs(preAttrs) },
 			attrs:    attrs,
 			wantText: "pre=3 x=y a=one b=2",
-			wantJSON: `{"pre":3,"x":"y","a":"one","b":2}`,
 		},
 		{
 			name:    "groups",
@@ -102,14 +93,12 @@ func TestTextHandler1(t *testing.T) {
 				slog.Int("e", 5),
 			},
 			wantText: "msg=message a=1 g.b=2 g.h.c=3 g.d=4 e=5",
-			wantJSON: `{"msg":"message","a":1,"g":{"b":2,"h":{"c":3},"d":4},"e":5}`,
 		},
 		{
 			name:     "empty group",
 			replace:  removeKeys(slog.TimeKey, slog.LevelKey),
 			attrs:    []slog.Attr{slog.Group("g"), slog.Group("h", slog.Int("a", 1))},
 			wantText: "msg=message h.a=1",
-			wantJSON: `{"msg":"message","h":{"a":1}}`,
 		},
 		{
 			name:    "escapes",
@@ -121,7 +110,6 @@ func TestTextHandler1(t *testing.T) {
 					slog.Int("m.d", 1)), // dot is not escaped
 			},
 			wantText: `msg=message "a b"="x\t\n\x00y" " b.c=\"\\x2E\t.d=e"="f.g\"" " b.c=\"\\x2E\t.m.d"=1`,
-			wantJSON: `{"msg":"message","a b":"x\t\n\u0000y"," b.c=\"\\x2E\t":{"d=e":"f.g\"","m.d":1}}`,
 		},
 		{
 			name:    "LogValuer",
@@ -132,7 +120,6 @@ func TestTextHandler1(t *testing.T) {
 				slog.Int("b", 2),
 			},
 			wantText: "msg=message a=1 name.first=Ren name.last=Hoek b=2",
-			wantJSON: `{"msg":"message","a":1,"name":{"first":"Ren","last":"Hoek"},"b":2}`,
 		},
 		{
 			name:     "with-group",
@@ -140,7 +127,6 @@ func TestTextHandler1(t *testing.T) {
 			with:     func(h slog.Handler) slog.Handler { return h.WithAttrs(preAttrs).WithGroup("s") },
 			attrs:    attrs,
 			wantText: "msg=message pre=3 x=y s.a=one s.b=2",
-			wantJSON: `{"msg":"message","pre":3,"x":"y","s":{"a":"one","b":2}}`,
 		},
 		{
 			name:    "preformatted with-groups",
@@ -153,7 +139,6 @@ func TestTextHandler1(t *testing.T) {
 			},
 			attrs:    attrs,
 			wantText: "msg=message p1=1 s1.p2=2 s1.s2.a=one s1.s2.b=2",
-			wantJSON: `{"msg":"message","p1":1,"s1":{"p2":2,"s2":{"a":"one","b":2}}}`,
 		},
 		{
 			name:    "two with-groups",
@@ -165,28 +150,24 @@ func TestTextHandler1(t *testing.T) {
 			},
 			attrs:    attrs,
 			wantText: "msg=message p1=1 s1.s2.a=one s1.s2.b=2",
-			wantJSON: `{"msg":"message","p1":1,"s1":{"s2":{"a":"one","b":2}}}`,
 		},
 		{
 			name:     "GroupValue as Attr value",
 			replace:  removeKeys(slog.TimeKey, slog.LevelKey),
 			attrs:    []slog.Attr{{"v", slog.AnyValue(slog.IntValue(3))}},
 			wantText: "msg=message v=3",
-			wantJSON: `{"msg":"message","v":3}`,
 		},
 		{
 			name:     "byte slice",
 			replace:  removeKeys(slog.TimeKey, slog.LevelKey),
 			attrs:    []slog.Attr{slog.Any("bs", []byte{1, 2, 3, 4})},
 			wantText: `msg=message bs="\x01\x02\x03\x04"`,
-			wantJSON: `{"msg":"message","bs":"AQIDBA=="}`,
 		},
 		{
 			name:     "json.RawMessage",
 			replace:  removeKeys(slog.TimeKey, slog.LevelKey),
 			attrs:    []slog.Attr{slog.Any("bs", json.RawMessage([]byte("1234")))},
 			wantText: `msg=message bs="1234"`,
-			wantJSON: `{"msg":"message","bs":1234}`,
 		},
 		{
 			name:    "inline group",
@@ -197,7 +178,6 @@ func TestTextHandler1(t *testing.T) {
 				slog.Int("d", 4),
 			},
 			wantText: `msg=message a=1 b=2 c=3 d=4`,
-			wantJSON: `{"msg":"message","a":1,"b":2,"c":3,"d":4}`,
 		},
 	} {
 		r := slog.NewRecord(testTime, slog.LevelInfo, "message", 1)
@@ -205,28 +185,17 @@ func TestTextHandler1(t *testing.T) {
 		var buf bytes.Buffer
 		opts := slog.HandlerOptions{ReplaceAttr: test.replace}
 		t.Run(test.name, func(t *testing.T) {
-			for _, handler := range []struct {
-				name string
-				h    slog.Handler
-				want string
-			}{
-				{"text", opts.NewTextHandler(&buf), test.wantText},
-				{"json", opts.NewJSONHandler(&buf), test.wantJSON},
-			} {
-				t.Run(handler.name, func(t *testing.T) {
-					h := handler.h
-					if test.with != nil {
-						h = test.with(h)
-					}
-					buf.Reset()
-					if err := h.Handle(ctx, r); err != nil {
-						t.Fatal(err)
-					}
-					got := strings.TrimSuffix(buf.String(), "\n")
-					if got != handler.want {
-						t.Errorf("\ngot  %s\nwant %s\n", got, handler.want)
-					}
-				})
+			h := slog.Handler(NewHandlerWithOpts(&buf, opts))
+			if test.with != nil {
+				h = test.with(h)
+			}
+			buf.Reset()
+			if err := h.Handle(ctx, r); err != nil {
+				t.Fatal(err)
+			}
+			got := strings.TrimSuffix(buf.String(), "\n")
+			if got != test.wantText {
+				t.Errorf("\ngot  %s\nwant %s\n", got, test.wantText)
 			}
 		})
 	}

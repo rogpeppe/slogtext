@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-// TextHandler is a Handler that writes Records to an io.Writer as a
+// Handler is a Handler that writes Records to an io.Writer as a
 // sequence of key=value pairs separated by spaces and followed by a newline.
-type TextHandler struct {
+type Handler struct {
 	opts              slog.HandlerOptions
 	preformattedAttrs []byte
 	groupPrefix       string   // for text: prefix of groups opened in preformatting
@@ -27,9 +27,9 @@ type TextHandler struct {
 	w                 io.Writer
 }
 
-func (h *TextHandler) clone() *TextHandler {
+func (h *Handler) clone() *Handler {
 	// We can't use assignment because we can't copy the mutex.
-	return &TextHandler{
+	return &Handler{
 		opts:              h.opts,
 		preformattedAttrs: slices.Clip(h.preformattedAttrs),
 		groupPrefix:       h.groupPrefix,
@@ -41,7 +41,7 @@ func (h *TextHandler) clone() *TextHandler {
 
 // enabled reports whether l is greater than or equal to the
 // minimum level.
-func (h *TextHandler) enabled(l slog.Level) bool {
+func (h *Handler) enabled(l slog.Level) bool {
 	minLevel := slog.LevelInfo
 	if h.opts.Level != nil {
 		minLevel = h.opts.Level.Level()
@@ -49,7 +49,7 @@ func (h *TextHandler) enabled(l slog.Level) bool {
 	return l >= minLevel
 }
 
-func (h *TextHandler) withAttrs(as []slog.Attr) *TextHandler {
+func (h *Handler) withAttrs(as []slog.Attr) *Handler {
 	h2 := h.clone()
 	// Pre-format the attributes as an optimization.
 	prefix := newBuffer()
@@ -69,7 +69,7 @@ func (h *TextHandler) withAttrs(as []slog.Attr) *TextHandler {
 	return h2
 }
 
-func (h *TextHandler) withGroup(name string) *TextHandler {
+func (h *Handler) withGroup(name string) *Handler {
 	if name == "" {
 		return h
 	}
@@ -78,7 +78,7 @@ func (h *TextHandler) withGroup(name string) *TextHandler {
 	return h2
 }
 
-func (h *TextHandler) handle(r slog.Record) error {
+func (h *Handler) handle(r slog.Record) error {
 	state := h.newHandleState(newBuffer(), true, "", nil)
 	defer state.free()
 	// Built-in attributes. They are not in a group.
@@ -167,11 +167,11 @@ func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	})
 }
 
-// handleState holds state for a single call to TextHandler.handle.
+// handleState holds state for a single call to Handler.handle.
 // The initial value of sep determines whether to emit a separator
 // before the next key, after which it stays true.
 type handleState struct {
-	h       *TextHandler
+	h       *Handler
 	buf     *buffer
 	freeBuf bool      // should buf be freed?
 	prefix  *buffer   // for text: key prefix
@@ -183,7 +183,7 @@ var groupPool = sync.Pool{New: func() any {
 	return &s
 }}
 
-func (h *TextHandler) newHandleState(buf *buffer, freeBuf bool, sep string, prefix *buffer) handleState {
+func (h *Handler) newHandleState(buf *buffer, freeBuf bool, sep string, prefix *buffer) handleState {
 	s := handleState{
 		h:       h,
 		buf:     buf,
