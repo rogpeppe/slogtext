@@ -2,17 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slogtext
+package slog
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rogpeppe/slogtext/internal/buffer"
-	"golang.org/x/exp/slices"
-	"golang.org/x/exp/slog"
 )
 
 func TestRecordAttrs(t *testing.T) {
@@ -43,7 +42,7 @@ func TestRecordSourceLine(t *testing.T) {
 		if test.depth > 0 {
 			pc = callerPC(test.depth + 1)
 		}
-		r := NewRecord(time.Time{}, 0, "", pc, nil)
+		r := NewRecord(time.Time{}, 0, "", pc)
 		gotFile, gotLine := sourceLine(r)
 		if i := strings.LastIndexByte(gotFile, '/'); i >= 0 {
 			gotFile = gotFile[i+1:]
@@ -64,7 +63,7 @@ func TestAliasingAndClone(t *testing.T) {
 		return as
 	}
 
-	check := func(r slog.Record, want []Attr) {
+	check := func(r Record, want []Attr) {
 		t.Helper()
 		got := attrsSlice(r)
 		if !attrsEqual(got, want) {
@@ -74,7 +73,7 @@ func TestAliasingAndClone(t *testing.T) {
 
 	// Create a record whose Attrs overflow the inline array,
 	// creating a slice in r.back.
-	r1 := NewRecord(time.Time{}, 0, "", 0, nil)
+	r1 := NewRecord(time.Time{}, 0, "", 0)
 	r1.AddAttrs(intAttrs(0, nAttrsInline+1)...)
 	// Ensure that r1.back's capacity exceeds its length.
 	b := make([]Attr, len(r1.back), len(r1.back)+1)
@@ -96,13 +95,13 @@ func TestAliasingAndClone(t *testing.T) {
 	check(r2, append(slices.Clip(r1Attrs), Int("p", 2)))
 }
 
-func newRecordWithAttrs(as []Attr) slog.Record {
-	r := NewRecord(time.Now(), slog.LevelInfo, "", 0, nil)
+func newRecordWithAttrs(as []Attr) Record {
+	r := NewRecord(time.Now(), LevelInfo, "", 0)
 	r.AddAttrs(as...)
 	return r
 }
 
-func attrsSlice(r slog.Record) []Attr {
+func attrsSlice(r Record) []Attr {
 	s := make([]Attr, 0, r.NumAttrs())
 	r.Attrs(func(a Attr) { s = append(s, a) })
 	return s
@@ -128,7 +127,7 @@ func BenchmarkPC(b *testing.B) {
 }
 
 func BenchmarkSourceLine(b *testing.B) {
-	r := NewRecord(time.Now(), slog.LevelInfo, "", 5, nil)
+	r := NewRecord(time.Now(), LevelInfo, "", 5)
 	b.Run("alone", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			file, line := sourceLine(r)
@@ -155,7 +154,7 @@ func BenchmarkRecord(b *testing.B) {
 	var a Attr
 
 	for i := 0; i < b.N; i++ {
-		r := NewRecord(time.Time{}, slog.LevelInfo, "", 0, nil)
+		r := NewRecord(time.Time{}, LevelInfo, "", 0)
 		for j := 0; j < nAttrs; j++ {
 			r.AddAttrs(Int("k", j))
 		}

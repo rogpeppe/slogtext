@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slogtext
+package slog
 
 import (
 	"bytes"
@@ -12,12 +12,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/slices"
-	"golang.org/x/exp/slog"
 )
 
 const timeRE = `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})`
@@ -46,13 +45,13 @@ func TestLogTextHandler(t *testing.T) {
 	l.Warn("w", Duration("dur", 3*time.Second))
 	check(`level=WARN msg=w dur=3s`)
 
-	l.Error("bad", io.EOF, "a", 1)
-	check(`level=ERROR msg=bad err=EOF a=1`)
+	l.Error("bad", "a", 1)
+	check(`level=ERROR msg=bad a=1`)
 
-	l.Log(slog.LevelWarn+1, "w", Int("a", 1), String("b", "two"))
+	l.Log(nil, LevelWarn+1, "w", Int("a", 1), String("b", "two"))
 	check(`level=WARN\+1 msg=w a=1 b=two`)
 
-	l.LogAttrs(slog.LevelInfo+1, "a b c", Int("a", 1), String("b", "two"))
+	l.LogAttrs(nil, LevelInfo+1, "a b c", Int("a", 1), String("b", "two"))
 	check(`level=INFO\+1 msg="a b c" a=1 b=two`)
 
 	l.Info("info", "a", []Attr{Int("i", 1)})
@@ -83,7 +82,7 @@ func TestConnections(t *testing.T) {
 	Warn("msg", "b", 2)
 	checkLogOutput(t, logbuf.String(), `logger_test.go:\d+: WARN msg b=2`)
 	logbuf.Reset()
-	Error("msg", io.EOF, "c", 3)
+	Error("msg", "err", io.EOF, "c", 3)
 	checkLogOutput(t, logbuf.String(), `logger_test.go:\d+: ERROR msg err=EOF c=3`)
 
 	// Levels below Info are not printed.
@@ -116,7 +115,7 @@ func TestConnections(t *testing.T) {
 
 	// The default log.Logger always outputs at Info level.
 	slogbuf.Reset()
-	SetDefault(New(HandlerOptions{Level: slog.LevelWarn}.NewTextHandler(&slogbuf)))
+	SetDefault(New(HandlerOptions{Level: LevelWarn}.NewTextHandler(&slogbuf)))
 	log.Print("should not appear")
 	if got := slogbuf.String(); got != "" {
 		t.Errorf("got %q, want empty", got)
@@ -138,12 +137,12 @@ type wrappingHandler struct {
 	h Handler
 }
 
-func (h wrappingHandler) Enabled(ctx context.Context, level slog.Level) bool {
+func (h wrappingHandler) Enabled(ctx context.Context, level Level) bool {
 	return h.h.Enabled(ctx, level)
 }
-func (h wrappingHandler) WithGroup(name string) Handler { return h.h.WithGroup(name) }
-func (h wrappingHandler) WithAttrs(as []Attr) Handler   { return h.h.WithAttrs(as) }
-func (h wrappingHandler) Handle(r slog.Record) error    { return h.h.Handle(r) }
+func (h wrappingHandler) WithGroup(name string) Handler              { return h.h.WithGroup(name) }
+func (h wrappingHandler) WithAttrs(as []Attr) Handler                { return h.h.WithAttrs(as) }
+func (h wrappingHandler) Handle(ctx context.Context, r Record) error { return h.h.Handle(ctx, r) }
 
 func TestAttrs(t *testing.T) {
 	check := func(got []Attr, want ...Attr) {
@@ -161,7 +160,7 @@ func TestAttrs(t *testing.T) {
 	check(attrsSlice(h.r), Int("c", 3))
 }
 
-func sourceLine(r slog.Record) (string, int) {
+func sourceLine(r Record) (string, int) {
 	f := r.frame()
 	return f.File, f.Line
 }
@@ -190,9 +189,9 @@ func TestCallDepth(t *testing.T) {
 	startLine = f.Line + 4
 	// Do not change the number of lines between here and the call to check(0).
 
-	logger.Log(slog.LevelInfo, "")
+	logger.Log(nil, LevelInfo, "")
 	check(0)
-	logger.LogAttrs(slog.LevelInfo, "")
+	logger.LogAttrs(nil, LevelInfo, "")
 	check(1)
 	logger.Debug("")
 	check(2)
@@ -200,7 +199,7 @@ func TestCallDepth(t *testing.T) {
 	check(3)
 	logger.Warn("")
 	check(4)
-	logger.Error("", nil)
+	logger.Error("")
 	check(5)
 	Debug("")
 	check(6)
@@ -208,11 +207,11 @@ func TestCallDepth(t *testing.T) {
 	check(7)
 	Warn("")
 	check(8)
-	Error("", nil)
+	Error("")
 	check(9)
-	Log(slog.LevelInfo, "")
+	Log(nil, LevelInfo, "")
 	check(10)
-	LogAttrs(slog.LevelInfo, "")
+	LogAttrs(nil, LevelInfo, "")
 	check(11)
 }
 
@@ -225,13 +224,13 @@ func TestAlloc(t *testing.T) {
 		wantAllocs(t, 0, func() { Info("hello") })
 	})
 	t.Run("Error", func(t *testing.T) {
-		wantAllocs(t, 0, func() { Error("hello", io.EOF) })
+		wantAllocs(t, 0, func() { Error("hello") })
 	})
 	t.Run("logger.Info", func(t *testing.T) {
 		wantAllocs(t, 0, func() { dl.Info("hello") })
 	})
 	t.Run("logger.Log", func(t *testing.T) {
-		wantAllocs(t, 0, func() { dl.Log(slog.LevelDebug, "hello") })
+		wantAllocs(t, 0, func() { dl.Log(nil, LevelDebug, "hello") })
 	})
 	t.Run("2 pairs", func(t *testing.T) {
 		s := "abc"
@@ -248,7 +247,7 @@ func TestAlloc(t *testing.T) {
 		s := "abc"
 		i := 2000
 		wantAllocs(t, 2, func() {
-			l.Log(slog.LevelInfo, "hello",
+			l.Log(nil, LevelInfo, "hello",
 				"n", i,
 				"s", s,
 			)
@@ -259,8 +258,8 @@ func TestAlloc(t *testing.T) {
 		s := "abc"
 		i := 2000
 		wantAllocs(t, 0, func() {
-			if l.Enabled(slog.LevelInfo) {
-				l.Log(slog.LevelInfo, "hello",
+			if l.Enabled(nil, LevelInfo) {
+				l.Log(nil, LevelInfo, "hello",
 					"n", i,
 					"s", s,
 				)
@@ -282,30 +281,30 @@ func TestAlloc(t *testing.T) {
 		wantAllocs(t, 0, func() { dl.Info("", "error", io.EOF) })
 	})
 	t.Run("attrs1", func(t *testing.T) {
-		wantAllocs(t, 0, func() { dl.LogAttrs(slog.LevelInfo, "", Int("a", 1)) })
-		wantAllocs(t, 0, func() { dl.LogAttrs(slog.LevelInfo, "", Any("error", io.EOF)) })
+		wantAllocs(t, 0, func() { dl.LogAttrs(nil, LevelInfo, "", Int("a", 1)) })
+		wantAllocs(t, 0, func() { dl.LogAttrs(nil, LevelInfo, "", Any("error", io.EOF)) })
 	})
 	t.Run("attrs3", func(t *testing.T) {
 		wantAllocs(t, 0, func() {
-			dl.LogAttrs(slog.LevelInfo, "hello", Int("a", 1), String("b", "two"), Duration("c", time.Second))
+			dl.LogAttrs(nil, LevelInfo, "hello", Int("a", 1), String("b", "two"), Duration("c", time.Second))
 		})
 	})
 	t.Run("attrs3 disabled", func(t *testing.T) {
 		logger := New(discardHandler{disabled: true})
 		wantAllocs(t, 0, func() {
-			logger.LogAttrs(slog.LevelInfo, "hello", Int("a", 1), String("b", "two"), Duration("c", time.Second))
+			logger.LogAttrs(nil, LevelInfo, "hello", Int("a", 1), String("b", "two"), Duration("c", time.Second))
 		})
 	})
 	t.Run("attrs6", func(t *testing.T) {
 		wantAllocs(t, 1, func() {
-			dl.LogAttrs(slog.LevelInfo, "hello",
+			dl.LogAttrs(nil, LevelInfo, "hello",
 				Int("a", 1), String("b", "two"), Duration("c", time.Second),
 				Int("d", 1), String("e", "two"), Duration("f", time.Second))
 		})
 	})
 	t.Run("attrs9", func(t *testing.T) {
 		wantAllocs(t, 1, func() {
-			dl.LogAttrs(slog.LevelInfo, "hello",
+			dl.LogAttrs(nil, LevelInfo, "hello",
 				Int("a", 1), String("b", "two"), Duration("c", time.Second),
 				Int("d", 1), String("e", "two"), Duration("f", time.Second),
 				Int("d", 1), String("e", "two"), Duration("f", time.Second))
@@ -325,8 +324,8 @@ func TestSetAttrs(t *testing.T) {
 		{[]any{"a", 1, "b"}, []Attr{Int("a", 1), String(badKey, "b")}},
 		{[]any{"a", 1, 2, 3}, []Attr{Int("a", 1), Int(badKey, 2), Int(badKey, 3)}},
 	} {
-		r := NewRecord(time.Time{}, 0, "", 0, nil)
-		r.setAttrsFromArgs(test.args)
+		r := NewRecord(time.Time{}, 0, "", 0)
+		r.Add(test.args...)
 		got := attrsSlice(r)
 		if !attrsEqual(got, test.want) {
 			t.Errorf("%v:\ngot  %v\nwant %v", test.args, got, test.want)
@@ -362,57 +361,17 @@ func TestLoggerError(t *testing.T) {
 		return a
 	}
 	l := New(HandlerOptions{ReplaceAttr: removeTime}.NewTextHandler(&buf))
-	l.Error("msg", io.EOF, "a", 1)
+	l.Error("msg", "err", io.EOF, "a", 1)
 	checkLogOutput(t, buf.String(), `level=ERROR msg=msg err=EOF a=1`)
 	buf.Reset()
-	l.Error("msg", io.EOF, "a")
+	l.Error("msg", "err", io.EOF, "a")
 	checkLogOutput(t, buf.String(), `level=ERROR msg=msg err=EOF !BADKEY=a`)
-}
-
-func TestLogCopying(t *testing.T) {
-	// Verify that Logger methods that purport to set one field of a new Logger
-	// actually do so while preserving the other field.
-
-	h := &captureHandler{} // Use a captureHandler for convenience.
-	l := New(h)
-	ctx := context.WithValue(context.Background(), "v", 0)
-
-	checkContext := func(l *Logger) {
-		t.Helper()
-		ctx := l.Context()
-		if ctx == nil {
-			t.Error("nil context")
-		} else if got, want := ctx.Value("v"), 0; got != want {
-			t.Errorf("for got %v, want %v", got, want)
-		}
-	}
-
-	// WithContext returns a Logger with the given context and the same handler.
-	l2 := l.WithContext(ctx)
-	checkContext(l2)
-	if l2.Handler() != h {
-		t.Error("WithContext changed handler")
-	}
-
-	// With returns a Logger with a different handler but the same context.
-	l3 := l2.With("a", 1)
-	if l3.Handler() == l2.Handler() {
-		t.Error("With did not change handler")
-	}
-	checkContext(l3)
-
-	// WithGroup also returns a Logger with a different handler but the same context.
-	l4 := l3.WithGroup("g")
-	if l4.Handler() == l3.Handler() {
-		t.Error("With did not change handler")
-	}
-	checkContext(l4)
 }
 
 func TestNewLogLogger(t *testing.T) {
 	var buf bytes.Buffer
 	h := NewTextHandler(&buf)
-	ll := NewLogLogger(h, slog.LevelWarn)
+	ll := NewLogLogger(h, LevelWarn)
 	ll.Print("hello")
 	checkLogOutput(t, buf.String(), "time="+timeRE+` level=WARN msg=hello`)
 }
@@ -439,27 +398,38 @@ func clean(s string) string {
 }
 
 type captureHandler struct {
-	r      slog.Record
+	mu     sync.Mutex
+	r      Record
 	attrs  []Attr
 	groups []string
 }
 
-func (h *captureHandler) Handle(r slog.Record) error {
+func (h *captureHandler) Handle(ctx context.Context, r Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.r = r
 	return nil
 }
 
-func (*captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (*captureHandler) Enabled(context.Context, Level) bool { return true }
 
 func (c *captureHandler) WithAttrs(as []Attr) Handler {
-	c2 := *c
-	c2.attrs = concat(c2.attrs, as)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var c2 captureHandler
+	c2.r = c.r
+	c2.groups = c.groups
+	c2.attrs = concat(c.attrs, as)
 	return &c2
 }
 
 func (c *captureHandler) WithGroup(name string) Handler {
-	c2 := *c
-	c2.groups = append(slices.Clip(c2.groups), name)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var c2 captureHandler
+	c2.r = c.r
+	c2.attrs = c.attrs
+	c2.groups = append(slices.Clip(c.groups), name)
 	return &c2
 }
 
@@ -468,8 +438,8 @@ type discardHandler struct {
 	attrs    []Attr
 }
 
-func (d discardHandler) Enabled(context.Context, slog.Level) bool { return !d.disabled }
-func (discardHandler) Handle(slog.Record) error                   { return nil }
+func (d discardHandler) Enabled(context.Context, Level) bool { return !d.disabled }
+func (discardHandler) Handle(context.Context, Record) error  { return nil }
 func (d discardHandler) WithAttrs(as []Attr) Handler {
 	d.attrs = concat(d.attrs, as)
 	return d
@@ -494,41 +464,56 @@ func BenchmarkNopLog(b *testing.B) {
 	b.Run("no attrs", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			l.LogAttrs(slog.LevelInfo, "msg")
+			l.LogAttrs(nil, LevelInfo, "msg")
 		}
 	})
 	b.Run("attrs", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			l.LogAttrs(slog.LevelInfo, "msg", Int("a", 1), String("b", "two"), Bool("c", true))
+			l.LogAttrs(nil, LevelInfo, "msg", Int("a", 1), String("b", "two"), Bool("c", true))
 		}
 	})
 	b.Run("attrs-parallel", func(b *testing.B) {
 		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				l.LogAttrs(slog.LevelInfo, "msg", Int("a", 1), String("b", "two"), Bool("c", true))
+				l.LogAttrs(nil, LevelInfo, "msg", Int("a", 1), String("b", "two"), Bool("c", true))
 			}
 		})
 	})
 	b.Run("keys-values", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			l.Log(slog.LevelInfo, "msg", "a", 1, "b", "two", "c", true)
+			l.Log(nil, LevelInfo, "msg", "a", 1, "b", "two", "c", true)
 		}
 	})
 	b.Run("WithContext", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			l.WithContext(ctx).LogAttrs(slog.LevelInfo, "msg2", Int("a", 1), String("b", "two"), Bool("c", true))
+			l.LogAttrs(ctx, LevelInfo, "msg2", Int("a", 1), String("b", "two"), Bool("c", true))
 		}
 	})
 	b.Run("WithContext-parallel", func(b *testing.B) {
 		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				l.WithContext(ctx).LogAttrs(slog.LevelInfo, "msg", Int("a", 1), String("b", "two"), Bool("c", true))
+				l.LogAttrs(ctx, LevelInfo, "msg", Int("a", 1), String("b", "two"), Bool("c", true))
 			}
 		})
 	})
+}
+
+// callerPC returns the program counter at the given stack depth.
+func callerPC(depth int) uintptr {
+	var pcs [1]uintptr
+	runtime.Callers(depth, pcs[:])
+	return pcs[0]
+}
+
+func wantAllocs(t *testing.T, want int, f func()) {
+	t.Helper()
+	got := int(testing.AllocsPerRun(5, f))
+	if got != want {
+		t.Errorf("got %d allocs, want %d", got, want)
+	}
 }

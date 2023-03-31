@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slogtext
+package slog
 
 import (
 	"fmt"
@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 	"unsafe"
-
-	"golang.org/x/exp/slog"
 )
 
 func TestValueEqual(t *testing.T) {
@@ -61,6 +59,7 @@ func TestValueString(t *testing.T) {
 		{StringValue("foo"), "foo"},
 		{TimeValue(testTime), "2000-01-02 03:04:05 +0000 UTC"},
 		{AnyValue(time.Duration(3 * time.Second)), "3s"},
+		{GroupValue(Int("a", 1), Bool("b", true)), "[a=1 b=true]"},
 	} {
 		if got := test.v.String(); got != test.want {
 			t.Errorf("%#v:\ngot  %q\nwant %q", test.v, got, test.want)
@@ -106,7 +105,7 @@ func TestAnyLevelAlloc(t *testing.T) {
 	// Because typical Levels are small integers,
 	// they are zero-alloc.
 	var a Value
-	x := slog.LevelDebug + 100
+	x := LevelDebug + 100
 	wantAllocs(t, 0, func() { a = AnyValue(x) })
 	_ = a
 }
@@ -137,7 +136,7 @@ func TestAnyValue(t *testing.T) {
 func TestValueAny(t *testing.T) {
 	for _, want := range []any{
 		nil,
-		slog.LevelDebug + 100,
+		LevelDebug + 100,
 		time.UTC, // time.Locations treated specially...
 		KindBool, // ...as are Kinds
 		[]Attr{Int("a", 1)},

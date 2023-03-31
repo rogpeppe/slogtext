@@ -2,29 +2,30 @@ package benchmarks
 
 import (
 	"bytes"
+	"context"
+	"log/slog"
+	"slices"
 	"testing"
-
-	"github.com/rogpeppe/slogtext"
-	"golang.org/x/exp/slices"
 )
 
 func TestHandlers(t *testing.T) {
-	r := slog.NewRecord(TestTime, slog.LevelInfo, TestMessage, 0, nil)
-	r.AddAttrs(TestAttrs...)
+	ctx := context.Background()
+	r := slog.NewRecord(testTime, slog.LevelInfo, testMessage, 0)
+	r.AddAttrs(testAttrs...)
 	t.Run("text", func(t *testing.T) {
 		var b bytes.Buffer
 		h := newFastTextHandler(&b)
-		if err := h.Handle(r); err != nil {
+		if err := h.Handle(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 		got := b.String()
-		if got != WantText {
-			t.Errorf("\ngot  %q\nwant %q", got, WantText)
+		if got != wantText {
+			t.Errorf("\ngot  %q\nwant %q", got, wantText)
 		}
 	})
 	t.Run("async", func(t *testing.T) {
 		h := newAsyncHandler()
-		if err := h.Handle(r); err != nil {
+		if err := h.Handle(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 		got := h.ringBuffer[0]

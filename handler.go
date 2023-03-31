@@ -2,18 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slogtext
+package slog
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
-
-	"golang.org/x/exp/slices"
-	"golang.org/x/exp/slog"
 
 	"github.com/rogpeppe/slogtext/internal/buffer"
 )
@@ -27,29 +25,43 @@ import (
 // Any of the Handler's methods may be called concurrently with itself
 // or with other methods. It is the responsibility of the Handler to
 // manage this concurrency.
+//
+// Users of the slog package should not invoke Handler methods directly.
+// They should use the methods of [Logger] instead.
 type Handler interface {
 	// Enabled reports whether the handler handles records at the given level.
 	// The handler ignores records whose level is lower.
 	// It is called early, before any arguments are processed,
 	// to save effort if the log event should be discarded.
-	// The Logger's context is passed so Enabled can use its values
-	// to make a decision. The context may be nil.
-	Enabled(context.Context, slog.Level) bool
+	// If called from a Logger method, the first argument is the context
+	// passed to that method, or context.Background() if nil was passed
+	// or the method does not take a context.
+	// The context is passed so Enabled can use its values
+	// to make a decision.
+	Enabled(context.Context, Level) bool
 
 	// Handle handles the Record.
-	// It will only be called if Enabled returns true.
+	// It will only be called Enabled returns true.
+	// The Context argument is as for Enabled.
+	// It is present solely to provide Handlers access to the context's values.
+	// Canceling the context should not affect record processing.
+	// (Among other things, log messages may be necessary to debug a
+	// cancellation-related problem.)
+	//
 	// Handle methods that produce output should observe the following rules:
 	//   - If r.Time is the zero time, ignore the time.
+	//   - If r.PC is zero, ignore it.
 	//   - If an Attr's key is the empty string and the value is not a group,
 	//     ignore the Attr.
 	//   - If a group's key is empty, inline the group's Attrs.
 	//   - If a group has no Attrs (even if it has a non-empty key),
 	//     ignore it.
-	Handle(r slog.Record) error
+	Handle(context.Context, Record) error
 
 	// WithAttrs returns a new Handler whose attributes consist of
 	// both the receiver's attributes and the arguments.
 	// The Handler owns the slice: it may retain, modify or discard it.
+	// [Logger.With] will resolve the Attrs.
 	WithAttrs(attrs []Attr) Handler
 
 	// WithGroup returns a new Handler with the given group appended to
@@ -82,19 +94,19 @@ type defaultHandler struct {
 
 func newDefaultHandler(output func(int, string) error) *defaultHandler {
 	return &defaultHandler{
-		ch:     &commonHandler{},
+		ch:     &commonHandler{json: false},
 		output: output,
 	}
 }
 
-func (*defaultHandler) Enabled(_ context.Context, l slog.Level) bool {
-	return l >= slog.LevelInfo
+func (*defaultHandler) Enabled(_ context.Context, l Level) bool {
+	return l >= LevelInfo
 }
 
 // Collect the level, attributes and message in a string and
 // write it with the default log.Logger.
 // Let the log.Logger handle time and file/line.
-func (h *defaultHandler) Handle(r slog.Record) error {
+func (h *defaultHandler) Handle(ctx context.Context, r Record) error {
 	buf := buffer.New()
 	buf.WriteString(r.Level.String())
 	buf.WriteByte(' ')
@@ -103,9 +115,8 @@ func (h *defaultHandler) Handle(r slog.Record) error {
 	defer state.free()
 	state.appendNonBuiltIns(r)
 
-	// 5 = log.Output depth + handlerWriter.Write + defaultHandler.Handle
-	//
-	return h.output(5, buf.String())
+	// skip [h.output, defaultHandler.Handle, handlerWriter.Write, log.Output]
+	return h.output(4, buf.String())
 }
 
 func (h *defaultHandler) WithAttrs(as []Attr) Handler {
@@ -130,7 +141,7 @@ type HandlerOptions struct {
 	// If Level is nil, the handler assumes LevelInfo.
 	// The handler calls Level.Level for each record processed;
 	// to adjust the minimum level dynamically, use a LevelVar.
-	Level slog.Leveler
+	Level Leveler
 
 	// ReplaceAttr is called to rewrite each non-group attribute before it is logged.
 	// The attribute's value has been resolved (see [Value.Resolve]).
@@ -174,12 +185,10 @@ const (
 	// SourceKey is the key used by the built-in handlers for the source file
 	// and line of the log call. The associated value is a string.
 	SourceKey = "source"
-	// ErrorKey is the key used for errors by Logger.Error.
-	// The associated value is an [error].
-	ErrorKey = "err"
 )
 
 type commonHandler struct {
+	json              bool // true => output JSON; false => output text
 	opts              HandlerOptions
 	preformattedAttrs []byte
 	groupPrefix       string   // for text: prefix of groups opened in preformatting
@@ -192,6 +201,7 @@ type commonHandler struct {
 func (h *commonHandler) clone() *commonHandler {
 	// We can't use assignment because we can't copy the mutex.
 	return &commonHandler{
+		json:              h.json,
 		opts:              h.opts,
 		preformattedAttrs: slices.Clip(h.preformattedAttrs),
 		groupPrefix:       h.groupPrefix,
@@ -203,8 +213,8 @@ func (h *commonHandler) clone() *commonHandler {
 
 // enabled reports whether l is greater than or equal to the
 // minimum level.
-func (h *commonHandler) enabled(l slog.Level) bool {
-	minLevel := slog.LevelInfo
+func (h *commonHandler) enabled(l Level) bool {
+	minLevel := LevelInfo
 	if h.opts.Level != nil {
 		minLevel = h.opts.Level.Level()
 	}
@@ -243,9 +253,12 @@ func (h *commonHandler) withGroup(name string) *commonHandler {
 	return h2
 }
 
-func (h *commonHandler) handle(r slog.Record) error {
+func (h *commonHandler) handle(r Record) error {
 	state := h.newHandleState(buffer.New(), true, "", nil)
 	defer state.free()
+	if h.json {
+		state.buf.WriteByte('{')
+	}
 	// Built-in attributes. They are not in a group.
 	stateGroups := state.groups
 	state.groups = nil // So ReplaceAttrs sees no groups instead of the pre groups.
@@ -307,7 +320,7 @@ func (h *commonHandler) handle(r slog.Record) error {
 	return err
 }
 
-func (s *handleState) appendNonBuiltIns(r slog.Record) {
+func (s *handleState) appendNonBuiltIns(r Record) {
 	// preformatted Attrs
 	if len(s.h.preformattedAttrs) > 0 {
 		s.buf.WriteString(s.sep)
@@ -323,10 +336,21 @@ func (s *handleState) appendNonBuiltIns(r slog.Record) {
 	r.Attrs(func(a Attr) {
 		s.appendAttr(a)
 	})
+	if s.h.json {
+		// Close all open groups.
+		for range s.h.groups {
+			s.buf.WriteByte('}')
+		}
+		// Close the top-level object.
+		s.buf.WriteByte('}')
+	}
 }
 
 // attrSep returns the separator between attributes.
 func (h *commonHandler) attrSep() string {
+	if h.json {
+		return ","
+	}
 	return " "
 }
 
@@ -384,8 +408,14 @@ const keyComponentSep = '.'
 // openGroup starts a new group of attributes
 // with the given name.
 func (s *handleState) openGroup(name string) {
-	s.prefix.WriteString(name)
-	s.prefix.WriteByte(keyComponentSep)
+	if s.h.json {
+		s.appendKey(name)
+		s.buf.WriteByte('{')
+		s.sep = ""
+	} else {
+		s.prefix.WriteString(name)
+		s.prefix.WriteByte(keyComponentSep)
+	}
 	// Collect group names for ReplaceAttr.
 	if s.groups != nil {
 		*s.groups = append(*s.groups, name)
@@ -395,7 +425,11 @@ func (s *handleState) openGroup(name string) {
 
 // closeGroup ends the group with the given name.
 func (s *handleState) closeGroup(name string) {
-	(*s.prefix) = (*s.prefix)[:len(*s.prefix)-len(name)-1 /* for keyComponentSep */]
+	if s.h.json {
+		s.buf.WriteByte('}')
+	} else {
+		(*s.prefix) = (*s.prefix)[:len(*s.prefix)-len(name)-1 /* for keyComponentSep */]
+	}
 	s.sep = s.h.attrSep()
 	if s.groups != nil {
 		*s.groups = (*s.groups)[:len(*s.groups)-1]
@@ -457,39 +491,67 @@ func (s *handleState) appendKey(key string) {
 	} else {
 		s.appendString(key)
 	}
-	s.buf.WriteByte('=')
+	if s.h.json {
+		s.buf.WriteByte(':')
+	} else {
+		s.buf.WriteByte('=')
+	}
 	s.sep = s.h.attrSep()
 }
 
 func (s *handleState) appendSource(file string, line int) {
-	// text
-	if needsQuoting(file) {
-		s.appendString(file + ":" + strconv.Itoa(line))
-	} else {
-		// common case: no quoting needed.
-		s.appendString(file)
+	if s.h.json {
+		s.buf.WriteByte('"')
+		*s.buf = appendEscapedJSONString(*s.buf, file)
 		s.buf.WriteByte(':')
 		s.buf.WritePosInt(line)
+		s.buf.WriteByte('"')
+	} else {
+		// text
+		if needsQuoting(file) {
+			s.appendString(file + ":" + strconv.Itoa(line))
+		} else {
+			// common case: no quoting needed.
+			s.appendString(file)
+			s.buf.WriteByte(':')
+			s.buf.WritePosInt(line)
+		}
 	}
 }
 
 func (s *handleState) appendString(str string) {
-	// text
-	if needsQuoting(str) {
-		*s.buf = strconv.AppendQuote(*s.buf, str)
+	if s.h.json {
+		s.buf.WriteByte('"')
+		*s.buf = appendEscapedJSONString(*s.buf, str)
+		s.buf.WriteByte('"')
 	} else {
-		s.buf.WriteString(str)
+		// text
+		if needsQuoting(str) {
+			*s.buf = strconv.AppendQuote(*s.buf, str)
+		} else {
+			s.buf.WriteString(str)
+		}
 	}
 }
 
 func (s *handleState) appendValue(v Value) {
-	if err := appendTextValue(s, v); err != nil {
+	var err error
+	if s.h.json {
+		err = appendJSONValue(s, v)
+	} else {
+		err = appendTextValue(s, v)
+	}
+	if err != nil {
 		s.appendError(err)
 	}
 }
 
 func (s *handleState) appendTime(t time.Time) {
-	writeTimeRFC3339Millis(s.buf, t)
+	if s.h.json {
+		appendJSONTime(s, t)
+	} else {
+		writeTimeRFC3339Millis(s.buf, t)
+	}
 }
 
 // This takes half the time of Time.AppendFormat.

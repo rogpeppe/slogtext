@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slogtext
+package slog
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,8 +14,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/slog"
 )
 
 var testTime = time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -36,9 +35,14 @@ func TestTextHandler(t *testing.T) {
 			`"x = y"`, `"qu\"o"`,
 		},
 		{
-			"Sprint",
+			"String method",
 			Any("name", name{"Ren", "Hoek"}),
 			`name`, `"Hoek, Ren"`,
+		},
+		{
+			"struct",
+			Any("x", &struct{ A, b int }{A: 1, b: 2}),
+			`x`, `"&{A:1 b:2}"`,
 		},
 		{
 			"TextMarshaler",
@@ -49,6 +53,11 @@ func TestTextHandler(t *testing.T) {
 			"TextMarshaler error",
 			Any("t", text{""}),
 			`t`, `"!ERROR:text: empty string"`,
+		},
+		{
+			"nil value",
+			Any("a", nil),
+			`a`, `<nil>`,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -74,9 +83,9 @@ func TestTextHandler(t *testing.T) {
 				t.Run(opts.name, func(t *testing.T) {
 					var buf bytes.Buffer
 					h := opts.opts.NewTextHandler(&buf)
-					r := NewRecord(testTime, slog.LevelInfo, "a message", 0, nil)
+					r := NewRecord(testTime, LevelInfo, "a message", 0)
 					r.AddAttrs(test.attr)
-					if err := h.Handle(r); err != nil {
+					if err := h.Handle(context.Background(), r); err != nil {
 						t.Fatal(err)
 					}
 					got := buf.String()
@@ -116,8 +125,8 @@ func (t text) MarshalText() ([]byte, error) {
 func TestTextHandlerSource(t *testing.T) {
 	var buf bytes.Buffer
 	h := HandlerOptions{AddSource: true}.NewTextHandler(&buf)
-	r := NewRecord(testTime, slog.LevelInfo, "m", callerPC(2), nil)
-	if err := h.Handle(r); err != nil {
+	r := NewRecord(testTime, LevelInfo, "m", callerPC(2))
+	if err := h.Handle(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
 	if got := buf.String(); !sourceRegexp.MatchString(got) {
@@ -144,9 +153,9 @@ func TestTextHandlerPreformatted(t *testing.T) {
 	var h Handler = NewTextHandler(&buf)
 	h = h.WithAttrs([]Attr{Duration("dur", time.Minute), Bool("b", true)})
 	// Also test omitting time.
-	r := NewRecord(time.Time{}, 0 /* 0 Level is INFO */, "m", 0, nil)
+	r := NewRecord(time.Time{}, 0 /* 0 Level is INFO */, "m", 0)
 	r.AddAttrs(Int("a", 1))
-	if err := h.Handle(r); err != nil {
+	if err := h.Handle(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
 	got := strings.TrimSuffix(buf.String(), "\n")
@@ -157,16 +166,16 @@ func TestTextHandlerPreformatted(t *testing.T) {
 }
 
 func TestTextHandlerAlloc(t *testing.T) {
-	r := NewRecord(time.Now(), slog.LevelInfo, "msg", 0, nil)
+	r := NewRecord(time.Now(), LevelInfo, "msg", 0)
 	for i := 0; i < 10; i++ {
 		r.AddAttrs(Int("x = y", i))
 	}
 	var h Handler = NewTextHandler(io.Discard)
-	wantAllocs(t, 0, func() { h.Handle(r) })
+	wantAllocs(t, 0, func() { h.Handle(context.Background(), r) })
 
 	h = h.WithGroup("s")
 	r.AddAttrs(Group("g", Int("a", 1)))
-	wantAllocs(t, 0, func() { h.Handle(r) })
+	wantAllocs(t, 0, func() { h.Handle(context.Background(), r) })
 }
 
 func TestNeedsQuoting(t *testing.T) {

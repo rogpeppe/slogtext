@@ -4,22 +4,23 @@
 
 // TODO: verify that the output of Marshal{Text,JSON} is suitably escaped.
 
-package slogtext
+package slog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rogpeppe/slogtext/internal/buffer"
-	"golang.org/x/exp/slices"
-	"golang.org/x/exp/slog"
 )
 
 func TestDefaultHandle(t *testing.T) {
+	ctx := context.Background()
 	preAttrs := []Attr{Int("pre", 0)}
 	attrs := []Attr{Int("a", 1), String("b", "two")}
 	for _, test := range []struct {
@@ -92,9 +93,9 @@ func TestDefaultHandle(t *testing.T) {
 			if test.with != nil {
 				h = test.with(h)
 			}
-			r := NewRecord(time.Time{}, slog.LevelInfo, "message", 0, nil)
+			r := NewRecord(time.Time{}, LevelInfo, "message", 0)
 			r.AddAttrs(test.attrs...)
-			if err := h.Handle(r); err != nil {
+			if err := h.Handle(ctx, r); err != nil {
 				t.Fatal(err)
 			}
 			if got != test.want {
@@ -106,6 +107,7 @@ func TestDefaultHandle(t *testing.T) {
 
 // Verify the common parts of TextHandler and JSONHandler.
 func TestJSONAndTextHandlers(t *testing.T) {
+	ctx := context.Background()
 
 	// ReplaceAttr functions
 
@@ -122,23 +124,27 @@ func TestJSONAndTextHandlers(t *testing.T) {
 		preAttrs []Attr
 		attrs    []Attr
 		wantText string
+		wantJSON string
 	}{
 		{
 			name:     "basic",
 			attrs:    attrs,
 			wantText: "time=2000-01-02T03:04:05.000Z level=INFO msg=message a=one b=2",
+			wantJSON: `{"time":"2000-01-02T03:04:05Z","level":"INFO","msg":"message","a":"one","b":2}`,
 		},
 		{
 			name:     "cap keys",
 			replace:  upperCaseKey,
 			attrs:    attrs,
 			wantText: "TIME=2000-01-02T03:04:05.000Z LEVEL=INFO MSG=message A=one B=2",
+			wantJSON: `{"TIME":"2000-01-02T03:04:05Z","LEVEL":"INFO","MSG":"message","A":"one","B":2}`,
 		},
 		{
 			name:     "remove all",
 			replace:  removeAll,
 			attrs:    attrs,
 			wantText: "",
+			wantJSON: `{}`,
 		},
 		{
 			name:     "preformatted",
@@ -146,6 +152,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 			preAttrs: preAttrs,
 			attrs:    attrs,
 			wantText: "time=2000-01-02T03:04:05.000Z level=INFO msg=message pre=3 x=y a=one b=2",
+			wantJSON: `{"time":"2000-01-02T03:04:05Z","level":"INFO","msg":"message","pre":3,"x":"y","a":"one","b":2}`,
 		},
 		{
 			name:     "preformatted cap keys",
@@ -154,6 +161,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 			preAttrs: preAttrs,
 			attrs:    attrs,
 			wantText: "TIME=2000-01-02T03:04:05.000Z LEVEL=INFO MSG=message PRE=3 X=y A=one B=2",
+			wantJSON: `{"TIME":"2000-01-02T03:04:05Z","LEVEL":"INFO","MSG":"message","PRE":3,"X":"y","A":"one","B":2}`,
 		},
 		{
 			name:     "preformatted remove all",
@@ -162,12 +170,14 @@ func TestJSONAndTextHandlers(t *testing.T) {
 			preAttrs: preAttrs,
 			attrs:    attrs,
 			wantText: "",
+			wantJSON: "{}",
 		},
 		{
 			name:     "remove built-in",
 			replace:  removeKeys(TimeKey, LevelKey, MessageKey),
 			attrs:    attrs,
 			wantText: "a=one b=2",
+			wantJSON: `{"a":"one","b":2}`,
 		},
 		{
 			name:     "preformatted remove built-in",
@@ -175,6 +185,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 			with:     func(h Handler) Handler { return h.WithAttrs(preAttrs) },
 			attrs:    attrs,
 			wantText: "pre=3 x=y a=one b=2",
+			wantJSON: `{"pre":3,"x":"y","a":"one","b":2}`,
 		},
 		{
 			name:    "groups",
@@ -188,12 +199,14 @@ func TestJSONAndTextHandlers(t *testing.T) {
 				Int("e", 5),
 			},
 			wantText: "msg=message a=1 g.b=2 g.h.c=3 g.d=4 e=5",
+			wantJSON: `{"msg":"message","a":1,"g":{"b":2,"h":{"c":3},"d":4},"e":5}`,
 		},
 		{
 			name:     "empty group",
 			replace:  removeKeys(TimeKey, LevelKey),
 			attrs:    []Attr{Group("g"), Group("h", Int("a", 1))},
 			wantText: "msg=message h.a=1",
+			wantJSON: `{"msg":"message","h":{"a":1}}`,
 		},
 		{
 			name:    "escapes",
@@ -205,6 +218,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 					Int("m.d", 1)), // dot is not escaped
 			},
 			wantText: `msg=message "a b"="x\t\n\x00y" " b.c=\"\\x2E\t.d=e"="f.g\"" " b.c=\"\\x2E\t.m.d"=1`,
+			wantJSON: `{"msg":"message","a b":"x\t\n\u0000y"," b.c=\"\\x2E\t":{"d=e":"f.g\"","m.d":1}}`,
 		},
 		{
 			name:    "LogValuer",
@@ -215,6 +229,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 				Int("b", 2),
 			},
 			wantText: "msg=message a=1 name.first=Ren name.last=Hoek b=2",
+			wantJSON: `{"msg":"message","a":1,"name":{"first":"Ren","last":"Hoek"},"b":2}`,
 		},
 		{
 			name:     "with-group",
@@ -222,6 +237,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 			with:     func(h Handler) Handler { return h.WithAttrs(preAttrs).WithGroup("s") },
 			attrs:    attrs,
 			wantText: "msg=message pre=3 x=y s.a=one s.b=2",
+			wantJSON: `{"msg":"message","pre":3,"x":"y","s":{"a":"one","b":2}}`,
 		},
 		{
 			name:    "preformatted with-groups",
@@ -234,6 +250,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 			},
 			attrs:    attrs,
 			wantText: "msg=message p1=1 s1.p2=2 s1.s2.a=one s1.s2.b=2",
+			wantJSON: `{"msg":"message","p1":1,"s1":{"p2":2,"s2":{"a":"one","b":2}}}`,
 		},
 		{
 			name:    "two with-groups",
@@ -245,24 +262,28 @@ func TestJSONAndTextHandlers(t *testing.T) {
 			},
 			attrs:    attrs,
 			wantText: "msg=message p1=1 s1.s2.a=one s1.s2.b=2",
+			wantJSON: `{"msg":"message","p1":1,"s1":{"s2":{"a":"one","b":2}}}`,
 		},
 		{
 			name:     "GroupValue as Attr value",
 			replace:  removeKeys(TimeKey, LevelKey),
 			attrs:    []Attr{{"v", AnyValue(IntValue(3))}},
 			wantText: "msg=message v=3",
+			wantJSON: `{"msg":"message","v":3}`,
 		},
 		{
 			name:     "byte slice",
 			replace:  removeKeys(TimeKey, LevelKey),
 			attrs:    []Attr{Any("bs", []byte{1, 2, 3, 4})},
 			wantText: `msg=message bs="\x01\x02\x03\x04"`,
+			wantJSON: `{"msg":"message","bs":"AQIDBA=="}`,
 		},
 		{
 			name:     "json.RawMessage",
 			replace:  removeKeys(TimeKey, LevelKey),
 			attrs:    []Attr{Any("bs", json.RawMessage([]byte("1234")))},
 			wantText: `msg=message bs="1234"`,
+			wantJSON: `{"msg":"message","bs":1234}`,
 		},
 		{
 			name:    "inline group",
@@ -273,9 +294,10 @@ func TestJSONAndTextHandlers(t *testing.T) {
 				Int("d", 4),
 			},
 			wantText: `msg=message a=1 b=2 c=3 d=4`,
+			wantJSON: `{"msg":"message","a":1,"b":2,"c":3,"d":4}`,
 		},
 	} {
-		r := NewRecord(testTime, slog.LevelInfo, "message", 1, nil)
+		r := NewRecord(testTime, LevelInfo, "message", 1)
 		r.AddAttrs(test.attrs...)
 		var buf bytes.Buffer
 		opts := HandlerOptions{ReplaceAttr: test.replace}
@@ -286,6 +308,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 				want string
 			}{
 				{"text", opts.NewTextHandler(&buf), test.wantText},
+				{"json", opts.NewJSONHandler(&buf), test.wantJSON},
 			} {
 				t.Run(handler.name, func(t *testing.T) {
 					h := handler.h
@@ -293,7 +316,7 @@ func TestJSONAndTextHandlers(t *testing.T) {
 						h = test.with(h)
 					}
 					buf.Reset()
-					if err := h.Handle(r); err != nil {
+					if err := h.Handle(ctx, r); err != nil {
 						t.Fatal(err)
 					}
 					got := strings.TrimSuffix(buf.String(), "\n")
@@ -335,25 +358,25 @@ func (n logValueName) LogValue() Value {
 }
 
 func TestHandlerEnabled(t *testing.T) {
-	levelVar := func(l slog.Level) *slog.LevelVar {
-		var al slog.LevelVar
+	levelVar := func(l Level) *LevelVar {
+		var al LevelVar
 		al.Set(l)
 		return &al
 	}
 
 	for _, test := range []struct {
-		leveler slog.Leveler
+		leveler Leveler
 		want    bool
 	}{
 		{nil, true},
-		{slog.LevelWarn, false},
-		{&slog.LevelVar{}, true}, // defaults to Info
-		{levelVar(slog.LevelWarn), false},
-		{slog.LevelDebug, true},
-		{levelVar(slog.LevelDebug), true},
+		{LevelWarn, false},
+		{&LevelVar{}, true}, // defaults to Info
+		{levelVar(LevelWarn), false},
+		{LevelDebug, true},
+		{levelVar(LevelDebug), true},
 	} {
 		h := &commonHandler{opts: HandlerOptions{Level: test.leveler}}
-		got := h.enabled(slog.LevelInfo)
+		got := h.enabled(LevelInfo)
 		if got != test.want {
 			t.Errorf("%v: got %t, want %t", test.leveler, got, test.want)
 		}
@@ -362,18 +385,18 @@ func TestHandlerEnabled(t *testing.T) {
 
 func TestAppendSource(t *testing.T) {
 	for _, test := range []struct {
-		file     string
-		wantText string
+		file               string
+		wantText, wantJSON string
 	}{
-		{"a/b.go", "a/b.go:1"},
-		{"a b.go", `"a b.go:1"`},
-		{`C:\windows\b.go`, `C:\windows\b.go:1`},
+		{"a/b.go", "a/b.go:1", `"a/b.go:1"`},
+		{"a b.go", `"a b.go:1"`, `"a b.go:1"`},
+		{`C:\windows\b.go`, `C:\windows\b.go:1`, `"C:\\windows\\b.go:1"`},
 	} {
 		check := func(json bool, want string) {
 			t.Helper()
 			var buf []byte
 			state := handleState{
-				h:   &commonHandler{},
+				h:   &commonHandler{json: json},
 				buf: (*buffer.Buffer)(&buf),
 			}
 			state.appendSource(test.file, 1)
@@ -383,6 +406,7 @@ func TestAppendSource(t *testing.T) {
 			}
 		}
 		check(false, test.wantText)
+		check(true, test.wantJSON)
 	}
 }
 

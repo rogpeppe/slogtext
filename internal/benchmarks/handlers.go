@@ -10,11 +10,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
+	"log/slog/internal/buffer"
 	"strconv"
 	"time"
-
-	"github.com/rogpeppe/slogtext"
-	"github.com/rogpeppe/slogtext/internal/buffer"
 )
 
 // A fastTextHandler writes a Record to an io.Writer in a format similar to
@@ -34,7 +33,7 @@ func newFastTextHandler(w io.Writer) slog.Handler {
 
 func (h *fastTextHandler) Enabled(context.Context, slog.Level) bool { return true }
 
-func (h *fastTextHandler) Handle(r slog.Record) error {
+func (h *fastTextHandler) Handle(_ context.Context, r slog.Record) error {
 	buf := buffer.New()
 	defer buf.Free()
 
@@ -81,7 +80,7 @@ func (h *fastTextHandler) appendValue(buf *buffer.Buffer, v slog.Value) {
 		case error:
 			buf.WriteString(a.Error())
 		default:
-			buf.WriteString(fmt.Sprint(a))
+			fmt.Fprint(buf, a)
 		}
 	default:
 		panic(fmt.Sprintf("bad kind: %s", v.Kind()))
@@ -106,7 +105,8 @@ func (*fastTextHandler) WithGroup(string) slog.Handler {
 // we simulate a lock-free queue by adding the Record to a ring buffer.
 // Omitting the locking makes this little more than a copy of the Record,
 // but that is a worthwhile thing to measure because Records are on the large
-// side.
+// side. Since nothing actually reads from the ring buffer, it can handle an
+// arbitrary number of Records without either blocking or allocation.
 type asyncHandler struct {
 	ringBuffer [100]slog.Record
 	next       int
@@ -118,7 +118,7 @@ func newAsyncHandler() *asyncHandler {
 
 func (*asyncHandler) Enabled(context.Context, slog.Level) bool { return true }
 
-func (h *asyncHandler) Handle(r slog.Record) error {
+func (h *asyncHandler) Handle(_ context.Context, r slog.Record) error {
 	h.ringBuffer[h.next] = r.Clone()
 	h.next = (h.next + 1) % len(h.ringBuffer)
 	return nil
@@ -132,10 +132,11 @@ func (*asyncHandler) WithGroup(string) slog.Handler {
 	panic("asyncHandler: WithGroup unimplemented")
 }
 
+// A disabledHandler's Enabled method always returns false.
 type disabledHandler struct{}
 
-func (disabledHandler) Enabled(context.Context, slog.Level) bool { return false }
-func (disabledHandler) Handle(slog.Record) error                 { panic("should not be called") }
+func (disabledHandler) Enabled(context.Context, slog.Level) bool  { return false }
+func (disabledHandler) Handle(context.Context, slog.Record) error { panic("should not be called") }
 
 func (disabledHandler) WithAttrs([]slog.Attr) slog.Handler {
 	panic("disabledHandler: With unimplemented")

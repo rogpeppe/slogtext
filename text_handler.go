@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slogtext
+package slog
 
 import (
 	"context"
@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"unicode"
 	"unicode/utf8"
-
-	"golang.org/x/exp/slog"
 )
 
 // TextHandler is a Handler that writes Records to an io.Writer as a
@@ -33,6 +31,7 @@ func NewTextHandler(w io.Writer) *TextHandler {
 func (opts HandlerOptions) NewTextHandler(w io.Writer) *TextHandler {
 	return &TextHandler{
 		&commonHandler{
+			json: false,
 			w:    w,
 			opts: opts,
 		},
@@ -41,7 +40,7 @@ func (opts HandlerOptions) NewTextHandler(w io.Writer) *TextHandler {
 
 // Enabled reports whether the handler handles records at the given level.
 // The handler ignores records whose level is lower.
-func (h *TextHandler) Enabled(_ context.Context, level slog.Level) bool {
+func (h *TextHandler) Enabled(_ context.Context, level Level) bool {
 	return h.commonHandler.enabled(level)
 }
 
@@ -69,7 +68,7 @@ func (h *TextHandler) WithGroup(name string) Handler {
 // If the AddSource option is set and source information is available,
 // the key is "source" and the value is output as FILE:LINE.
 //
-// The message's key "msg".
+// The message's key is "msg".
 //
 // To modify these or other attributes, or remove them from the output, use
 // [HandlerOptions.ReplaceAttr].
@@ -81,13 +80,17 @@ func (h *TextHandler) WithGroup(name string) Handler {
 // characters, non-printing characters, '"' or '='.
 //
 // Keys inside groups consist of components (keys or group names) separated by
-// dots. No further escaping is performed. If it is necessary to reconstruct the
-// group structure of a key even in the presence of dots inside components, use
-// [HandlerOptions.ReplaceAttr] to escape the keys.
+// dots. No further escaping is performed.
+// Thus there is no way to determine from the key "a.b.c" whether there
+// are two groups "a" and "b" and a key "c", or a single group "a.b" and a key "c",
+// or single group "a" and a key "b.c".
+// If it is necessary to reconstruct the group structure of a key
+// even in the presence of dots inside components, use
+// [HandlerOptions.ReplaceAttr] to encode that information in the key.
 //
 // Each call to Handle results in a single serialized call to
 // io.Writer.Write.
-func (h *TextHandler) Handle(r slog.Record) error {
+func (h *TextHandler) Handle(_ context.Context, r Record) error {
 	return h.commonHandler.handle(r)
 }
 
@@ -98,20 +101,13 @@ func appendTextValue(s *handleState, v Value) error {
 	case KindTime:
 		s.appendTime(v.time())
 	case KindAny:
-		switch v := v.any.(type) {
-		case encoding.TextMarshaler:
-			data, err := v.MarshalText()
+		if tm, ok := v.any.(encoding.TextMarshaler); ok {
+			data, err := tm.MarshalText()
 			if err != nil {
 				return err
 			}
 			// TODO: avoid the conversion to string.
 			s.appendString(string(data))
-			return nil
-		case fmt.Stringer:
-			s.appendString(v.String())
-			return nil
-		case error:
-			s.appendString(v.Error())
 			return nil
 		}
 		if bs, ok := byteSlice(v.any); ok {
@@ -119,8 +115,7 @@ func appendTextValue(s *handleState, v Value) error {
 			s.buf.WriteString(strconv.Quote(string(bs)))
 			return nil
 		}
-		appendJSONMarshal(s.buf, v.Any())
-		//s.appendString(fmt.Sprint(v.Any()))
+		s.appendString(fmt.Sprintf("%+v", v.Any()))
 	default:
 		*s.buf = v.append(*s.buf)
 	}
@@ -136,7 +131,7 @@ func byteSlice(a any) ([]byte, bool) {
 	}
 	// Like Printf's %s, we allow both the slice type and the byte element type to be named.
 	t := reflect.TypeOf(a)
-	if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
+	if t != nil && t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
 		return reflect.ValueOf(a).Bytes(), true
 	}
 	return nil, false
@@ -146,7 +141,9 @@ func needsQuoting(s string) bool {
 	for i := 0; i < len(s); {
 		b := s[i]
 		if b < utf8.RuneSelf {
-			if needsQuotingSet[b] {
+			// Quote anything except a backslash that would need quoting in a
+			// JSON string, as well as space and '='
+			if b != '\\' && (b == ' ' || b == '=' || !safeSet[b]) {
 				return true
 			}
 			i++
@@ -159,18 +156,4 @@ func needsQuoting(s string) bool {
 		i += size
 	}
 	return false
-}
-
-var needsQuotingSet = [utf8.RuneSelf]bool{
-	'"': true,
-	'=': true,
-}
-
-func init() {
-	for i := 0; i < utf8.RuneSelf; i++ {
-		r := rune(i)
-		if unicode.IsSpace(r) || !unicode.IsPrint(r) {
-			needsQuotingSet[i] = true
-		}
-	}
 }

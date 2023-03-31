@@ -5,9 +5,7 @@
 // Package buffer provides a pool-allocated byte buffer.
 package buffer
 
-import (
-	"sync"
-)
+import "sync"
 
 // buffer adapted from go/src/fmt/print.go
 type Buffer []byte
@@ -42,12 +40,14 @@ func (b *Buffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (b *Buffer) WriteString(s string) {
+func (b *Buffer) WriteString(s string) (int, error) {
 	*b = append(*b, s...)
+	return len(s), nil
 }
 
-func (b *Buffer) WriteByte(c byte) {
+func (b *Buffer) WriteByte(c byte) error {
 	*b = append(*b, c)
+	return nil
 }
 
 func (b *Buffer) WritePosInt(i int) {

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package slogtext
+package slog
 
 import (
 	"fmt"
@@ -81,4 +81,8 @@ func (a Attr) Equal(b Attr) bool {
 
 func (a Attr) String() string {
 	return fmt.Sprintf("%s=%s", a.Key, a.Value)
+}
+
+func (a Attr) isEmpty() bool {
+	return a.Key == "" && a.Value.num == 0 && a.Value.any == nil
 }
