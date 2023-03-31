@@ -8,6 +8,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+
 	"github.com/rogpeppe/slogtext/internal/slogtest"
 )
 

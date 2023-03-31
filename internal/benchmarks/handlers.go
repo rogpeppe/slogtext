@@ -11,9 +11,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"log/slog/internal/buffer"
 	"strconv"
 	"time"
+
+	"github.com/rogpeppe/slogtext/internal/buffer"
 )
 
 // A fastTextHandler writes a Record to an io.Writer in a format similar to
